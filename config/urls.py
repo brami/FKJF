@@ -26,5 +26,12 @@ urlpatterns = [
          bearbeiten.wiederherstellen, name="seite_wiederherstellen"),
     path("anmelden/", auth_views.LoginView.as_view(), name="login"),
     path("abmelden/", auth_views.LogoutView.as_view(), name="logout"),
+    path("passwort/setzen/<uidb64>/<token>/",
+         auth_views.PasswordResetConfirmView.as_view(
+             success_url="/passwort/gesetzt/", post_reset_login=False),
+         name="password_reset_confirm"),
+    path("passwort/gesetzt/", auth_views.PasswordResetCompleteView.as_view(),
+         name="password_reset_complete"),
+    path("gesund/", views.gesund, name="gesund"),
     path(ADMIN_PFAD, admin.site.urls),
 ]

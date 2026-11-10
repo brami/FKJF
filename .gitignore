@@ -6,3 +6,5 @@ private/
 staticfiles/
 .pytest_cache/
 .env
+mails/
+deploy/logs/

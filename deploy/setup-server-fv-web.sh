@@ -3,14 +3,8 @@
 #  setup-server-fv-web.sh – Einrichtung des Webservers des Fördervereins KF/JF Kreuzau
 #
 #  Läuft auf DEINEM Rechner und richtet den vServer per SSH ein.
-#  Ziel: Debian 13 (trixie), Grundinstallation.
-#
-#  Zwei Arten des Aufrufs
-#    im Repository:  deploy/setup-server-fv-web.sh …   (nimmt den lokalen Git-Stand)
-#    eigenständig:   ./setup-server-fv-web.sh …        (Skript liegt allein irgendwo;
-#                    holt den Stand per git von GitHub, Standard: Branch main.
-#                    Nötig ist nur Lesezugriff auf das Repository, z. B. über
-#                    die eigenen GitHub-Zugangsdaten oder einen SSH-Schlüssel.)
+#  Ziel: Debian 13 (trixie), Grundinstallation. Das Skript kann allein liegen;
+#  ein ausgechecktes Repository ist nur für -L nötig.
 #  Reproduzierbar: Jeder Schritt prüft, ob er schon erledigt ist, und kann
 #  beliebig oft erneut ausgeführt werden.
 #
@@ -20,44 +14,49 @@
 #    gunicorn           Dienst fv-web.service als Benutzer "fvweb"
 #    Caddy              HTTPS mit automatischem Zertifikat, statische Dateien
 #    restic             tägliche, verschlüsselte Datensicherung
+#    fv-web-update      holt die Anwendung von GitHub und installiert sie –
+#                       auch ohne dieses Skript: ssh … sudo fv-web-update
 #
 #  Verzeichnisse
-#    /srv/fv-web/releases/<zeitstempel>   installierte Versionen (die letzten 3)
+#    /srv/fv-web/releases/<zeit>-<commit> installierte Versionen (die letzten 3)
 #    /srv/fv-web/current                  Verweis auf die aktive Version
 #    /etc/fv-web/env                      Einstellungen der Anwendung
-#    /etc/fv-web/backup.env               Einstellungen der Datensicherung (nur root)
+#    /etc/fv-web/deploy.env               Repository, Domain (nur root)
+#    /etc/fv-web/backup.env               Datensicherung (nur root)
 #    /var/lib/fv-web/private              Anhänge (nur für die Anwendung lesbar)
 #    /var/lib/fv-web/static               CSS, JavaScript, Editor (liefert Caddy aus)
 #    /var/lib/fv-web/mails                E-Mails, solange kein Mailserver eingetragen ist
 #    /var/backups/fv-web                  Datenbank-Dumps (7 Tage)
 #
 #  Was das Skript macht
-#    1. Verbindung und DNS prüfen, Ports 80/443 auf andere Webserver prüfen
-#    2. System aktualisieren, Zeitzone, Hostname, automatische Sicherheitsupdates
-#    3. Admin-Benutzer mit SSH-Schlüssel und sudo, Firewall, fail2ban
-#    4. PostgreSQL, Caddy, Python; Dienstbenutzer, Verzeichnisse, Einstellungen,
-#       systemd-Dienst, Datensicherung
-#    5. Anmeldung als Admin-Benutzer testen – erst DANACH SSH härten
-#    6. Anwendung aus dem Git-Repository (git archive, ohne Zugangsdaten auf
-#       dem Server) hochladen, installieren, Datenbank migrieren, starten.
-#       Vorher automatische Datensicherung; schlägt der Start fehl, wird die
-#       vorherige Version wieder aktiviert.
-#    7. Optional: Vorstandskonto anlegen (-a, -m) – gibt einen Link zum Setzen
-#       des Passworts aus
-#    8. Zusammenfassung
+#    1. Verbindung, Ports 80/443 (anderer Webserver?) und DNS prüfen
+#    2. System aktualisieren, Zeitzone, Hostname, automatische Sicherheitsupdates,
+#       Admin-Benutzer mit SSH-Schlüssel und sudo, Firewall, fail2ban,
+#       PostgreSQL, Caddy, Python, Dienstbenutzer, Einstellungen, Dienst, Sicherung
+#    3. Anmeldung als Admin-Benutzer testen – erst DANACH SSH härten
+#    4. fv-web-update einrichten bzw. aktualisieren, Zugriff auf GitHub prüfen
+#       (privates Repository: Deploy-Schlüssel wird angezeigt)
+#    5. Anwendung installieren: Der SERVER holt den Stand von GitHub
+#       (Standard: main). Mit -L wird stattdessen der Stand des lokalen
+#       Repositorys hochgeladen (z. B. noch nicht gepushte Commits testen).
+#    6. Optional: Vorstandskonto anlegen (-a, -m)
+#    7. Zusammenfassung
 #
 #  Protokolle
-#    lokal:    deploy/logs/setup-<server>-<zeitstempel>.log
-#    Server:   /var/log/fv-web-setup/<zeitstempel>.log
+#    lokal:    logs/setup-<server>-<zeitstempel>.log (neben dem Skript)
+#    Server:   /var/log/fv-web-setup/<zeitstempel>.log, /var/log/fv-web-update.log
 #
 #  Beispiele
 #    Nur prüfen (ändert nichts):
-#      deploy/setup-server-fv-web.sh -H 203.0.113.10 -d foerderverein-kf-jf-kreuzau.de -W -c
+#      ./setup-server-fv-web.sh -H 203.0.113.10 -d foerderverein-kf-jf-kreuzau.de -W -c
 #    Erstinstallation mit Vorstandskonto:
-#      deploy/setup-server-fv-web.sh -H 203.0.113.10 -d foerderverein-kf-jf-kreuzau.de -W \
-#                                    -n fv-web -a michael.bramer -m adresse@example.org
-#    Neue Version einspielen (aktueller Stand von main):
-#      deploy/setup-server-fv-web.sh -H 203.0.113.10 -d foerderverein-kf-jf-kreuzau.de -U -r main
+#      ./setup-server-fv-web.sh -H 203.0.113.10 -d foerderverein-kf-jf-kreuzau.de -W \
+#                               -n fv-web -a michael.bramer -m adresse@example.org
+#    Neue Version (main) einspielen – mit diesem Skript oder direkt auf dem Server:
+#      ./setup-server-fv-web.sh -H 203.0.113.10 -d foerderverein-kf-jf-kreuzau.de -U
+#      ssh fkjs@203.0.113.10 sudo fv-web-update
+#    Lokalen, noch nicht gepushten Stand testen (im Repository):
+#      deploy/setup-server-fv-web.sh -H 203.0.113.10 -d foerderverein-kf-jf-kreuzau.de -U -L
 # =============================================================================
 set -Eeuo pipefail
 
@@ -71,8 +70,10 @@ DOMAIN=""
 WITH_WWW=0
 ACME_EMAIL=""
 BACKUP_REPO=""
-GIT_REF=""            # leer: HEAD (im Repository) bzw. main (eigenständig)
-REPO_URL="https://github.com/brami/FKJF.git"
+GIT_REF=""                                  # leer: Server nimmt main; mit -L: HEAD
+REPO_URL=""                                 # leer: bisheriger Eintrag bzw. Standard
+REPO_URL_DEFAULT="https://github.com/brami/FKJF.git"
+LOCAL_UPLOAD=0
 SKIP_HARDEN=0
 ASSUME_YES=0
 CHECK_ONLY=0
@@ -82,7 +83,7 @@ APP_ADMIN=""
 APP_ADMIN_MAIL=""
 
 usage() {
-  cat <<EOF
+  cat <<HILFE
 Aufruf: $0 -H <server> -d <domain> [Optionen]
 
 Pflicht:
@@ -90,12 +91,14 @@ Pflicht:
   -d <domain>     Domain der Webseite, z. B. foerderverein-kf-jf-kreuzau.de
 
 Anwendung:
-  -r <ref>        Git-Stand, der installiert wird (Branch, Tag oder Commit).
-                  Im Repository Standard: HEAD (nur eingecheckter Code).
-                  Eigenständig Standard: main.
-  -R <url>        Repository, aus dem eigenständig geholt wird
-                  (Standard: $REPO_URL, per SSH z. B.
-                  git@github.com:brami/FKJF.git)
+  -r <ref>        Git-Stand (Branch, Tag oder Commit). Standard: main
+                  (mit -L: HEAD des lokalen Repositorys)
+  -R <url>        Repository, aus dem der Server holt. Standard beim ersten
+                  Lauf: $REPO_URL_DEFAULT
+                  Privates Repository per SSH: git@github.com:brami/FKJF.git
+                  (der Server zeigt dann seinen Deploy-Schlüssel an)
+  -L              Lokalen Stand hochladen statt vom Server holen lassen
+                  (nur im ausgecheckten Repository; nur eingecheckter Code)
   -U              Nur die Anwendung installieren/aktualisieren (Grundeinrichtung
                   und SSH-Härtung überspringen; Server muss eingerichtet sein)
   -N              Keine Anwendung installieren (nur Server einrichten)
@@ -114,19 +117,20 @@ Optional:
   -n <hostname>   Interner Rechnername des Servers (Standard: unverändert)
   -t <zeitzone>   Zeitzone (Standard: $TIMEZONE)
   -p <port>       SSH-Port (Standard: $SSH_PORT)
-  -c              Nur prüfen: SSH, Ports, DNS, Git-Stand – ändert nichts
+  -c              Nur prüfen: SSH, Ports, DNS – ändert nichts
   -S              SSH-Härtung überspringen (root-Login bleibt erlaubt)
   -y              Keine Rückfrage vor dem Start
   -h              Diese Hilfe
-EOF
+HILFE
 }
 
-while getopts ":H:d:r:R:a:m:e:B:u:n:t:p:WUNcSyh" opt; do
+while getopts ":H:d:r:R:a:m:e:B:u:n:t:p:LWUNcSyh" opt; do
   case "$opt" in
     H) SERVER="$OPTARG" ;;
     d) DOMAIN="$OPTARG" ;;
     r) GIT_REF="$OPTARG" ;;
     R) REPO_URL="$OPTARG" ;;
+    L) LOCAL_UPLOAD=1 ;;
     a) APP_ADMIN="$OPTARG" ;;
     m) APP_ADMIN_MAIL="$OPTARG" ;;
     e) ACME_EMAIL="$OPTARG" ;;
@@ -152,6 +156,7 @@ done
 [[ "$DOMAIN" =~ ^[a-z0-9]([a-z0-9.-]*[a-z0-9])?$ && "$DOMAIN" == *.* ]] \
   || { echo "Ungültige Domain: $DOMAIN" >&2; exit 2; }
 [[ "$SSH_PORT" =~ ^[0-9]+$ ]] || { echo "Ungültiger SSH-Port: $SSH_PORT" >&2; exit 2; }
+[[ -z "$GIT_REF" || "$GIT_REF" =~ ^[A-Za-z0-9._/-]+$ ]] || { echo "Ungültiger Git-Stand: $GIT_REF" >&2; exit 2; }
 if [[ -n "$APP_ADMIN$APP_ADMIN_MAIL" ]]; then
   [[ -n "$APP_ADMIN" && -n "$APP_ADMIN_MAIL" ]] || { echo "-a und -m nur zusammen angeben." >&2; exit 2; }
   [[ "$APP_ADMIN" =~ ^[a-z0-9][a-z0-9._-]{0,149}$ ]] || { echo "Ungültiger Benutzername für -a: $APP_ADMIN" >&2; exit 2; }
@@ -159,19 +164,22 @@ if [[ -n "$APP_ADMIN$APP_ADMIN_MAIL" ]]; then
     || { echo "Ungültige E-Mail-Adresse für -m: $APP_ADMIN_MAIL" >&2; exit 2; }
 fi
 [[ $UPDATE_ONLY -eq 1 && $NO_APP -eq 1 ]] && { echo "-U und -N schließen sich aus." >&2; exit 2; }
-for v in "$ACME_EMAIL" "$BACKUP_REPO" "$TIMEZONE" "$NEW_HOSTNAME"; do
-  [[ "$v" != *[\"\$\`\\]* ]] || { echo "Unzulässige Zeichen in einer Option: $v" >&2; exit 2; }
+[[ $LOCAL_UPLOAD -eq 1 && $NO_APP -eq 1 ]] && { echo "-L und -N schließen sich aus." >&2; exit 2; }
+for v in "$ACME_EMAIL" "$BACKUP_REPO" "$TIMEZONE" "$NEW_HOSTNAME" "$REPO_URL"; do
+  [[ "$v" != *[\"\$\`\\[:space:]]* ]] || { echo "Unzulässige Zeichen in einer Option: $v" >&2; exit 2; }
 done
 
 # ----------------------------- Lokale Voraussetzungen ------------------------
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-# Liegt das Skript im Repository (deploy/), wird der lokale Stand verwendet,
-# sonst wird das Repository in ein temporäres Verzeichnis geholt.
-REPO_DIR=""; STANDALONE=1
-if [[ -f "$SCRIPT_DIR/../manage.py" ]] && git -C "$SCRIPT_DIR/.." rev-parse --git-dir >/dev/null 2>&1; then
-  REPO_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"; STANDALONE=0
+REPO_DIR=""
+if [[ $LOCAL_UPLOAD -eq 1 ]]; then
+  if [[ -f "$SCRIPT_DIR/../manage.py" ]] && git -C "$SCRIPT_DIR/.." rev-parse --git-dir >/dev/null 2>&1; then
+    REPO_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
+  else
+    echo "FEHLER: -L geht nur, wenn das Skript im ausgecheckten Repository liegt (deploy/)." >&2; exit 2
+  fi
+  GIT_REF="${GIT_REF:-HEAD}"
 fi
-[[ -n "$GIT_REF" ]] || { [[ $STANDALONE -eq 1 ]] && GIT_REF="main" || GIT_REF="HEAD"; }
 
 check_local_tools() {
   local missing=() t
@@ -180,9 +188,10 @@ check_local_tools() {
     echo "        macOS: brew install bash, dann: /opt/homebrew/bin/bash $0 ..." >&2
     exit 2
   fi
-  for t in ssh git curl tee awk sed grep tr wc head cut paste date gzip; do
+  for t in ssh curl tee awk sed grep tr wc head cut paste date; do
     command -v "$t" >/dev/null 2>&1 || missing+=("$t")
   done
+  if [[ $LOCAL_UPLOAD -eq 1 ]] && ! command -v git >/dev/null 2>&1; then missing+=("git"); fi
   if (( ${#missing[@]} > 0 )); then
     echo "FEHLER: Folgende Programme fehlen auf diesem Rechner: ${missing[*]}" >&2
     exit 2
@@ -214,35 +223,22 @@ MODE="Einrichtung"
 log "Start ($MODE)"
 log "Server: $SERVER | Domain: $DOMAIN$([[ $WITH_WWW -eq 1 ]] && echo " + www.$DOMAIN") | Admin: $ADMIN_USER | Zeitzone: $TIMEZONE | Hostname: ${NEW_HOSTNAME:-unverändert}"
 log "Lokales Protokoll: $LOCAL_LOG"
-if [[ $STANDALONE -eq 1 ]]; then log "Aufruf eigenständig – Code aus $REPO_URL ($GIT_REF)"
-else log "Aufruf im Repository $REPO_DIR ($GIT_REF)"; fi
 
-# ----------------------------- Git-Stand -------------------------------------
+# ----------------------------- Lokaler Git-Stand (-L) ------------------------
 APP_COMMIT=""; APP_DESC=""
-FETCH_DIR=""
-cleanup_fetch() { [[ -n "$FETCH_DIR" ]] && rm -rf "$FETCH_DIR"; return 0; }
-trap cleanup_fetch EXIT
-if [[ $NO_APP -eq 0 && $STANDALONE -eq 1 ]]; then
-  # Eigenständig: nur den gewünschten Stand holen (flach, ohne Verlauf)
-  FETCH_DIR="$(mktemp -d)"
-  log "Hole $GIT_REF aus $REPO_URL …"
-  git -C "$FETCH_DIR" init -q
-  if ! git -C "$FETCH_DIR" fetch -q --depth 1 "$REPO_URL" "$GIT_REF"; then
-    fail "Konnte $GIT_REF nicht aus $REPO_URL holen. Zugriff prüfen (privates Repository: GitHub-Anmeldung bzw. SSH-Schlüssel, -R git@github.com:brami/FKJF.git)."
-  fi
-  REPO_DIR="$FETCH_DIR"; GIT_REF="FETCH_HEAD"
-fi
-if [[ $NO_APP -eq 0 ]]; then
+if [[ $LOCAL_UPLOAD -eq 1 ]]; then
   APP_COMMIT="$(git -C "$REPO_DIR" rev-parse --verify --quiet "$GIT_REF^{commit}")" \
-    || fail "Git-Stand '$GIT_REF' nicht gefunden (git fetch vergessen?)."
+    || fail "Git-Stand '$GIT_REF' nicht gefunden."
   APP_DESC="$(git -C "$REPO_DIR" log -1 --format='%h %s (%ad)' --date=short "$APP_COMMIT")"
-  log "Anwendung: $APP_DESC"
-  if [[ $STANDALONE -eq 0 && "$GIT_REF" == HEAD && -n "$(git -C "$REPO_DIR" status --porcelain --untracked-files=no)" ]]; then
-    log "HINWEIS: Es gibt nicht eingecheckte Änderungen – übertragen wird nur der Stand des letzten Commits."
+  log "Anwendung: lokaler Stand $APP_DESC (wird hochgeladen)"
+  if [[ "$GIT_REF" == HEAD && -n "$(git -C "$REPO_DIR" status --porcelain --untracked-files=no)" ]]; then
+    log "HINWEIS: Es gibt nicht eingecheckte Änderungen – übertragen wird nur der letzte Commit."
   fi
   for f in manage.py requirements.txt config/settings.py; do
     git -C "$REPO_DIR" cat-file -e "$APP_COMMIT:$f" 2>/dev/null || fail "$f fehlt im Git-Stand $GIT_REF."
   done
+elif [[ $NO_APP -eq 0 ]]; then
+  log "Anwendung: Der Server holt ${GIT_REF:-main} aus ${REPO_URL:-dem eingetragenen Repository (Standard $REPO_URL_DEFAULT)}"
 fi
 
 # ----------------------------- Verbindung wählen -----------------------------
@@ -265,7 +261,6 @@ for t in apt-get systemctl; do command -v $t >/dev/null || echo "fehlt=$t"; done
 [ -d /run/systemd/system ] || echo "fehlt=systemd (läuft nicht)"
 timeout 10 bash -c "exec 3<>/dev/tcp/deb.debian.org/80" 2>/dev/null || echo "fehlt=Internetzugang (deb.debian.org:80)"
 [ -f /etc/fv-web/env ] && echo "eingerichtet=ja"
-[ -e /srv/fv-web/current/manage.py ] && echo "anwendung=ja"
 # Andere Programme auf Port 80/443 (z. B. Apache des bisherigen Drupal)?
 if command -v ss >/dev/null; then
   ss -Hltnp '( sport = :80 or sport = :443 )' 2>/dev/null \
@@ -357,14 +352,12 @@ if [[ $ASSUME_YES -ne 1 ]]; then
   [[ "$answer" =~ ^[jJyY]$ ]] || { log "Vom Benutzer abgebrochen."; exit 0; }
 fi
 
-RELEASE="$STAMP"
 REMOTE_TAR=""
-APP_SHA=""
 run_remote() {  # $1 = Phase, Skript kommt über stdin
   local envs
-  envs=$(printf 'PHASE=%q ADMIN_USER=%q TIMEZONE=%q NEW_HOSTNAME=%q DOMAIN=%q WITH_WWW=%q ACME_EMAIL=%q BACKUP_REPO=%q STAMP=%q SSH_PORT=%q REMOTE_TAR=%q APP_SHA=%q APP_COMMIT=%q APP_DESC=%q RELEASE=%q APP_ADMIN=%q APP_ADMIN_MAIL=%q' \
+  envs=$(printf 'PHASE=%q ADMIN_USER=%q TIMEZONE=%q NEW_HOSTNAME=%q DOMAIN=%q WITH_WWW=%q ACME_EMAIL=%q BACKUP_REPO=%q STAMP=%q SSH_PORT=%q REPO_URL=%q REPO_URL_DEFAULT=%q GIT_REF=%q NO_APP=%q LOCAL_UPLOAD=%q REMOTE_TAR=%q APP_COMMIT=%q APP_DESC=%q APP_ADMIN=%q APP_ADMIN_MAIL=%q' \
     "$1" "$ADMIN_USER" "$TIMEZONE" "$NEW_HOSTNAME" "$DOMAIN" "$WITH_WWW" "$ACME_EMAIL" "$BACKUP_REPO" "$STAMP" "$SSH_PORT" \
-    "$REMOTE_TAR" "$APP_SHA" "$APP_COMMIT" "$APP_DESC" "$RELEASE" "$APP_ADMIN" "$APP_ADMIN_MAIL")
+    "$REPO_URL" "$REPO_URL_DEFAULT" "$GIT_REF" "$NO_APP" "$LOCAL_UPLOAD" "$REMOTE_TAR" "$APP_COMMIT" "$APP_DESC" "$APP_ADMIN" "$APP_ADMIN_MAIL")
   # shellcheck disable=SC2029  # Variablen sollen lokal expandiert werden
   ssh "${SSH_OPTS[@]}" "$TARGET" "$SUDO env $envs bash -s"
 }
@@ -391,6 +384,7 @@ DATA=/var/lib/fv-web
 ETC=/etc/fv-web
 ENVF=$ETC/env
 BENV=$ETC/backup.env
+DENV=$ETC/deploy.env
 
 rnd() { python3 -c "import secrets,sys; print(secrets.token_urlsafe(int(sys.argv[1])))" "$1"; }
 # Einstellungsdateien im Format KEY="WERT" (lesbar für systemd und bash)
@@ -409,77 +403,6 @@ set_kv() {
 getkv() { grep -m1 "^$2=" "$1" | cut -d= -f2- | sed 's/^"//; s/"$//'; }
 app_installed() { [[ -e "$BASE/current/manage.py" ]]; }
 
-# manage.py als Dienstbenutzer mit den Einstellungen ausführen; $1 = Code-Verzeichnis
-manage_in() {
-  local dir="$1"; shift
-  runuser -u "$SVC" -- bash -c 'set -a; . "$0"; set +a; cd "$1"; shift; exec .venv/bin/python manage.py "$@"' \
-    "$ENVF" "$dir" "$@"
-}
-
-write_caddyfile() {  # $1 = app | platzhalter
-  local tmp; tmp="$(mktemp)"
-  {
-    if [[ -n "$ACME_EMAIL" ]]; then printf '{\n\temail %s\n}\n\n' "$ACME_EMAIL"; fi
-    cat <<CADDY
-# Webseite Förderverein KF/JF Kreuzau (angelegt von setup-server-fv-web.sh)
-(sicherheit) {
-	encode zstd gzip
-	# Die Anwendung setzt diese Kopfzeilen selbst; "?" ergänzt sie nur, wo sie
-	# fehlen (statische Dateien, Platzhalter)
-	header {
-		?Strict-Transport-Security "max-age=31536000"
-		?X-Content-Type-Options "nosniff"
-		-Server
-	}
-}
-
-$DOMAIN {
-	import sicherheit
-	log {
-		output file /var/log/caddy/fv-web.log {
-			roll_size 10MiB
-			roll_keep 10
-		}
-	}
-CADDY
-    if [[ "$1" == app ]]; then
-      cat <<'CADDY'
-	# Mehrere Anhänge à 20 MB in einem Formular
-	request_body {
-		max_size 150MB
-	}
-	handle_path /static/* {
-		root * /var/lib/fv-web/static
-		header Cache-Control "public, max-age=3600"
-		file_server
-	}
-	handle {
-		reverse_proxy unix//run/fv-web/gunicorn.sock
-	}
-}
-CADDY
-    else
-      cat <<'CADDY'
-	# Platzhalter bis zur Installation der Anwendung
-	root * /var/lib/fv-web/platzhalter
-	file_server
-}
-CADDY
-    fi
-    if [[ "$WITH_WWW" == 1 ]]; then
-      printf '\nwww.%s {\n\tredir https://%s{uri} permanent\n}\n' "$DOMAIN" "$DOMAIN"
-    fi
-  } > "$tmp"
-  if caddy validate --adapter caddyfile --config "$tmp" >/dev/null 2>&1; then
-    install -m 644 "$tmp" /etc/caddy/Caddyfile; rm -f "$tmp"
-    systemctl reload caddy 2>/dev/null || systemctl restart caddy
-    log "Caddyfile geschrieben ($1) und geladen."
-  else
-    caddy validate --adapter caddyfile --config "$tmp" 2>&1 | tail -5 || true
-    rm -f "$tmp"; log "FEHLER: Caddyfile ungültig – unverändert gelassen."; exit 1
-  fi
-}
-
 # --------------------------------------------------------------- Phase base
 phase_base() {
   step "Systeminformationen"
@@ -490,7 +413,7 @@ phase_base() {
   apt-get update -q
   apt-get -y -q -o Dpkg::Options::=--force-confdef -o Dpkg::Options::=--force-confold full-upgrade
   apt_install ca-certificates curl sudo dbus ufw fail2ban python3-systemd \
-              unattended-upgrades apt-listchanges jq bind9-dnsutils rsync restic \
+              unattended-upgrades apt-listchanges jq bind9-dnsutils rsync restic git \
               python3 python3-venv postgresql caddy
   log "Python $(python3 -V | cut -d' ' -f2) | PostgreSQL $(runuser -u postgres -- psql -tAc 'SHOW server_version' | cut -d' ' -f1) | $(caddy version | cut -d' ' -f1)"
 
@@ -655,7 +578,7 @@ EOF
   step "Caddy"
   systemctl enable caddy >/dev/null
   systemctl restart caddy   # neue Gruppenzugehörigkeit übernehmen
-  if app_installed; then write_caddyfile app; else write_caddyfile platzhalter; fi
+  log "Caddyfile schreibt fv-web-update (nächste Phase)."
 
   step "Datensicherung"
   [[ -f "$BENV" ]] || { ( umask 077; echo "# Datensicherung – Einstellungen (nur root)" > "$BENV" ); }
@@ -823,82 +746,366 @@ EOF
   fi
 }
 
-# --------------------------------------------------------------- Phase app
-phase_app() {
-  step "Anwendung: Paket prüfen"
-  [[ -f "$ENVF" ]] || { log "FEHLER: $ENVF fehlt – Server zuerst ohne -U einrichten."; exit 1; }
-  [[ -f "$REMOTE_TAR" ]] || { log "FEHLER: Hochgeladenes Paket fehlt: $REMOTE_TAR"; exit 1; }
-  [[ "$(sha256sum "$REMOTE_TAR" | cut -d' ' -f1)" == "$APP_SHA" ]] \
-    || { log "FEHLER: Prüfsumme stimmt nicht – Übertragung fehlerhaft."; exit 1; }
+# --------------------------------------------------------------- Phase tool
+# fv-web-update einrichten bzw. aktualisieren (läuft bei jedem Aufruf, auch mit -U)
+phase_tool() {
+  step "fv-web-update einrichten"
+  [[ -f "$DENV" ]] || ( umask 077; echo "# Bereitstellung – Repository und Domain (nur root)" > "$DENV" )
+  chown root:root "$DENV"; chmod 600 "$DENV"
+  if [[ -n "$REPO_URL" ]]; then set_kv "$DENV" REPO_URL "$REPO_URL"
+  else ensure_kv "$DENV" REPO_URL "$REPO_URL_DEFAULT"; fi
+  ensure_kv "$DENV" DEFAULT_REF "main"
+  set_kv "$DENV" DOMAIN "$DOMAIN"
+  set_kv "$DENV" WITH_WWW "$WITH_WWW"
+  set_kv "$DENV" ACME_EMAIL "$ACME_EMAIL"
+  log "Repository: $(getkv "$DENV" REPO_URL) (Standard-Stand: $(getkv "$DENV" DEFAULT_REF))"
+  install -d -m 700 /root/.ssh
+  if [[ ! -f /root/.ssh/fv-web-deploy ]]; then
+    ssh-keygen -q -t ed25519 -N "" -C "fv-web-deploy@$(hostnamectl --static)" -f /root/.ssh/fv-web-deploy
+    log "Deploy-Schlüssel erzeugt (nur nötig für ein privates Repository)."
+  fi
 
-  local rel="$BASE/releases/$RELEASE" prev=""
+  cat > /usr/local/sbin/fv-web-update <<'UPDATE'
+#!/usr/bin/env bash
+# =============================================================================
+#  fv-web-update – Anwendung der Webseite installieren und aktualisieren
+#  (angelegt von setup-server-fv-web.sh; Einstellungen in /etc/fv-web/deploy.env)
+#
+#  sudo fv-web-update                 Stand von main (DEFAULT_REF) holen und installieren
+#  sudo fv-web-update <ref>           bestimmten Branch, Tag oder Commit installieren
+#  sudo fv-web-update -f [<ref>]      auch installieren, wenn der Commit schon aktiv ist
+#  sudo fv-web-update --zurueck       vorige installierte Version wieder aktivieren
+#  sudo fv-web-update --status        installierte Versionen anzeigen
+#  sudo fv-web-update --pruefen       Zugriff auf das Repository prüfen
+#
+#  Intern (vom Einrichtungsskript):
+#    --paket <datei.tar.gz> --commit <hash> --beschreibung <text>
+#                                     hochgeladenen lokalen Stand installieren
+#    --caddy                          Caddyfile schreiben (Anwendung oder Platzhalter)
+#
+#  Ablauf einer Installation: holen → Python-Umgebung → Prüfung → Sicherung →
+#  Migration → statische Dateien → umschalten → Neustart → Statusprüfung.
+#  Startet die neue Version nicht, wird die vorige wieder aktiviert.
+#  Protokoll: /var/log/fv-web-update.log
+# =============================================================================
+set -Eeuo pipefail
+umask 022
+
+SVC=fvweb
+BASE=/srv/fv-web
+DATA=/var/lib/fv-web
+ETC=/etc/fv-web
+ENVF=$ETC/env
+DENV=$ETC/deploy.env
+KEY=/root/.ssh/fv-web-deploy
+LOGF=/var/log/fv-web-update.log
+
+[[ $EUID -eq 0 ]] || { echo "Bitte mit sudo ausführen." >&2; exit 1; }
+[[ -f "$DENV" ]] || { echo "$DENV fehlt – Server mit setup-server-fv-web.sh einrichten." >&2; exit 1; }
+
+getkv() { grep -m1 "^$2=" "$1" | cut -d= -f2- | sed 's/^"//; s/"$//'; }
+REPO_URL="$(getkv "$DENV" REPO_URL)"
+DEFAULT_REF="$(getkv "$DENV" DEFAULT_REF)"
+DOMAIN="$(getkv "$DENV" DOMAIN)"
+WITH_WWW="$(getkv "$DENV" WITH_WWW)"
+ACME_EMAIL="$(getkv "$DENV" ACME_EMAIL)"
+
+log()  { printf '%s [update] %s\n' "$(date '+%F %T')" "$*"; }
+step() { printf '\n%s [update] ===== %s =====\n' "$(date '+%F %T')" "$*"; }
+app_installed() { [[ -e "$BASE/current/manage.py" ]]; }
+
+# Zugriff per SSH-URL über den Deploy-Schlüssel (nur Lesezugriff auf dieses Repository)
+export GIT_SSH_COMMAND="ssh -i $KEY -o IdentitiesOnly=yes -o BatchMode=yes -o StrictHostKeyChecking=accept-new"
+export GIT_TERMINAL_PROMPT=0
+
+manage_in() {  # manage.py als Dienstbenutzer; $1 = Code-Verzeichnis
+  local dir="$1"; shift
+  runuser -u "$SVC" -- bash -c 'set -a; . "$0"; set +a; cd "$1"; shift; exec .venv/bin/python manage.py "$@"' \
+    "$ENVF" "$dir" "$@"
+}
+
+write_caddyfile() {  # $1 = app | platzhalter
+  local tmp; tmp="$(mktemp)"
+  {
+    if [[ -n "$ACME_EMAIL" ]]; then printf '{\n\temail %s\n}\n\n' "$ACME_EMAIL"; fi
+    cat <<CADDY
+# Webseite Förderverein KF/JF Kreuzau (angelegt von setup-server-fv-web.sh)
+(sicherheit) {
+	encode zstd gzip
+	# Die Anwendung setzt diese Kopfzeilen selbst; "?" ergänzt sie nur, wo sie
+	# fehlen (statische Dateien, Platzhalter)
+	header {
+		?Strict-Transport-Security "max-age=31536000"
+		?X-Content-Type-Options "nosniff"
+		-Server
+	}
+}
+
+$DOMAIN {
+	import sicherheit
+	log {
+		output file /var/log/caddy/fv-web.log {
+			roll_size 10MiB
+			roll_keep 10
+		}
+	}
+CADDY
+    if [[ "$1" == app ]]; then
+      cat <<'CADDY'
+	# Mehrere Anhänge à 20 MB in einem Formular
+	request_body {
+		max_size 150MB
+	}
+	handle_path /static/* {
+		root * /var/lib/fv-web/static
+		header Cache-Control "public, max-age=3600"
+		file_server
+	}
+	handle {
+		reverse_proxy unix//run/fv-web/gunicorn.sock
+	}
+}
+CADDY
+    else
+      cat <<'CADDY'
+	# Platzhalter bis zur Installation der Anwendung
+	root * /var/lib/fv-web/platzhalter
+	file_server
+}
+CADDY
+    fi
+    if [[ "$WITH_WWW" == 1 ]]; then
+      printf '\nwww.%s {\n\tredir https://%s{uri} permanent\n}\n' "$DOMAIN" "$DOMAIN"
+    fi
+  } > "$tmp"
+  if caddy validate --adapter caddyfile --config "$tmp" >/dev/null 2>&1; then
+    install -m 644 "$tmp" /etc/caddy/Caddyfile; rm -f "$tmp"
+    systemctl reload caddy 2>/dev/null || systemctl restart caddy
+    log "Caddyfile geschrieben ($1) und geladen."
+  else
+    caddy validate --adapter caddyfile --config "$tmp" 2>&1 | tail -5 || true
+    rm -f "$tmp"; log "FEHLER: Caddyfile ungültig – unverändert gelassen."; exit 1
+  fi
+}
+
+gesund() {
+  [[ "$(curl -s --max-time 5 --unix-socket /run/fv-web/gunicorn.sock \
+          -H "Host: $DOMAIN" -H 'X-Forwarded-Proto: https' http://localhost/gesund/ || true)" == ok ]]
+}
+
+warte_gesund() {
+  local _
+  for _ in $(seq 1 20); do gesund && return 0; sleep 1; done
+  return 1
+}
+
+aktiviere() {  # aktiviere <release-verzeichnis>
+  ln -sfn "$1" "$BASE/current.neu" && mv -T "$BASE/current.neu" "$BASE/current"
+  systemctl daemon-reload
+  systemctl enable fv-web >/dev/null
+  systemctl restart fv-web
+}
+
+pruefen() {
+  if git ls-remote --exit-code "$REPO_URL" HEAD >/dev/null 2>&1; then
+    log "Repository erreichbar: $REPO_URL"
+    return 0
+  fi
+  log "FEHLER: Kein Zugriff auf $REPO_URL"
+  if [[ "$REPO_URL" == git@* || "$REPO_URL" == ssh://* ]]; then
+    log "Deploy-Schlüssel bei GitHub eintragen: Repository → Settings → Deploy keys → Add deploy key"
+    log "(Titel z. B. \"Webserver\", \"Allow write access\" NICHT anhaken):"
+    sed 's/^/    /' "$KEY.pub"
+  else
+    log "Ist das Repository privat? Dann per SSH-URL und Deploy-Schlüssel holen:"
+    log "    setup-server-fv-web.sh … -R git@github.com:<besitzer>/<repo>.git"
+  fi
+  return 1
+}
+
+status() {
+  if app_installed; then
+    echo "Aktiv:"; sed 's/^/  /' "$BASE/current/.release"
+  else
+    echo "Keine Anwendung installiert."
+  fi
+  echo "Installierte Versionen (neueste zuerst):"
+  ls -1t "$BASE/releases" 2>/dev/null | sed 's/^/  /' || true
+  echo "Repository: $REPO_URL (Standard: $DEFAULT_REF)"
+}
+
+installiere() {  # installiere <tar.gz> <commit> <beschreibung>
+  local tarball="$1" commit="$2" desc="$3"
+  local rel prev=""
+  rel="$BASE/releases/$(date +%Y%m%d-%H%M%S)-${commit:0:7}"
   [[ -L "$BASE/current" ]] && prev="$(readlink -f "$BASE/current")"
-  step "Anwendung: entpacken (Version $RELEASE, Commit ${APP_COMMIT:0:10})"
-  rm -rf "$rel"; install -d -m 750 -o root -g "$SVC" "$rel"
-  tar -xzf "$REMOTE_TAR" -C "$rel" --strip-components=1 --no-same-owner
-  rm -f "$REMOTE_TAR"
-  printf 'Version:  %s\nCommit:   %s\nStand:    %s\nInstalliert: %s\n' \
-    "$RELEASE" "$APP_COMMIT" "$APP_DESC" "$(date '+%F %T')" > "$rel/.release"
 
-  step "Anwendung: Python-Umgebung"
+  step "Entpacken: $desc"
+  install -d -m 750 -o root -g "$SVC" "$rel"
+  tar -xzf "$tarball" -C "$rel" --strip-components=1 --no-same-owner
+  for f in manage.py requirements.txt config/settings.py; do
+    [[ -f "$rel/$f" ]] || { log "FEHLER: $f fehlt im Paket."; rm -rf "$rel"; exit 1; }
+  done
+  printf 'Commit:      %s\nStand:       %s\nQuelle:      %s\nInstalliert: %s\n' \
+    "$commit" "$desc" "$SOURCE" "$(date '+%F %T')" > "$rel/.release"
+
+  step "Python-Umgebung"
   python3 -m venv "$rel/.venv"
   "$rel/.venv/bin/pip" install -q --no-cache-dir --disable-pip-version-check -r "$rel/requirements.txt"
   # Code gehört root und ist für den Dienst nur lesbar
   chown -R root:"$SVC" "$rel"; chmod -R g+rX,g-w,o-rwx "$rel"
   log "$("$rel/.venv/bin/python" -c 'import django; print("Django", django.get_version())')"
 
-  step "Anwendung: Prüfung"
+  step "Prüfung"
   manage_in "$rel" check --deploy --fail-level ERROR
 
-  step "Anwendung: Datensicherung vor dem Update"
+  step "Datensicherung vor dem Update"
   if app_installed && systemctl cat fv-web-backup.service >/dev/null 2>&1; then
-    systemctl start fv-web-backup.service && log "Sicherung erstellt." \
-      || log "WARNUNG: Sicherung fehlgeschlagen – Update läuft trotzdem weiter."
+    if systemctl start fv-web-backup.service; then log "Sicherung erstellt."
+    else log "WARNUNG: Sicherung fehlgeschlagen – Update läuft trotzdem weiter."; fi
   else
     log "Erstinstallation – keine Sicherung nötig."
   fi
 
-  step "Anwendung: Datenbank migrieren, statische Dateien"
+  step "Datenbank migrieren, statische Dateien"
   manage_in "$rel" migrate --noinput
   manage_in "$rel" collectstatic --noinput --clear -v0
-  log "Statische Dateien: $(find "$DATA/static" -type f | wc -l) Dateien."
+  log "Statische Dateien: $(find "$DATA/static" -type f | wc -l)"
 
-  step "Anwendung: aktivieren und starten"
-  ln -sfn "$rel" "$BASE/current.neu" && mv -T "$BASE/current.neu" "$BASE/current"
-  systemctl daemon-reload
-  systemctl enable fv-web >/dev/null
-  systemctl restart fv-web
-  local ok=0
-  for _ in $(seq 1 20); do
-    if [[ "$(curl -s --max-time 5 --unix-socket /run/fv-web/gunicorn.sock \
-               -H "Host: $DOMAIN" -H 'X-Forwarded-Proto: https' http://localhost/gesund/ || true)" == ok ]]; then
-      ok=1; break
-    fi
-    sleep 1
-  done
-  if [[ $ok -ne 1 ]]; then
-    journalctl -u fv-web -n 40 --no-pager -o cat | sed 's/^/    /'
+  step "Aktivieren und starten"
+  aktiviere "$rel"
+  if ! warte_gesund; then
+    journalctl -u fv-web -n 40 --no-pager -o cat | sed 's/^/    /' || true
     if [[ -n "$prev" && -d "$prev" ]]; then
-      ln -sfn "$prev" "$BASE/current.neu" && mv -T "$BASE/current.neu" "$BASE/current"
-      systemctl restart fv-web
-      log "FEHLER: Neue Version startet nicht – vorherige Version $(basename "$prev") wieder aktiv."
-      log "        Achtung: Datenbank-Migrationen der neuen Version wurden NICHT zurückgenommen."
+      aktiviere "$prev"
+      rm -rf "$rel"   # defekte Version entfernen, damit --zurueck sie nicht wählt
+      if warte_gesund; then
+        log "FEHLER: Neue Version startet nicht – vorige Version $(basename "$prev") wieder aktiv."
+      else
+        log "FEHLER: Neue Version startet nicht, und auch die vorige Version $(basename "$prev") antwortet nicht!"
+      fi
+      log "        Datenbank-Migrationen der neuen Version wurden NICHT zurückgenommen."
     else
-      log "FEHLER: Anwendung startet nicht (Protokoll siehe oben)."
+      rm -rf "$rel"
+      rm -f "$BASE/current"
+      systemctl stop fv-web 2>/dev/null || true
+      log "FEHLER: Anwendung startet nicht (Protokoll siehe oben). Es bleibt bei der Platzhalterseite."
     fi
     exit 1
   fi
-  log "Anwendung läuft (gunicorn, $(systemctl show fv-web -p MainPID --value))."
+  log "Anwendung läuft: $desc"
   write_caddyfile app
 
   # die letzten drei Versionen behalten
   ls -1dt "$BASE"/releases/*/ | tail -n +4 | xargs -r rm -rf
-  log "Versionen: $(ls -1 "$BASE/releases" | paste -sd ' ')"
+  log "Versionen: $(ls -1t "$BASE/releases" | paste -sd ' ')"
 
   local code
   code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 15 --resolve "$DOMAIN:443:127.0.0.1" "https://$DOMAIN/gesund/" || true)
   if [[ "$code" == 200 ]]; then log "https://$DOMAIN/gesund/: in Ordnung."
   else log "HINWEIS: https://$DOMAIN noch nicht erreichbar (HTTP ${code:-–}). Meist fehlt noch das Zertifikat (DNS prüfen)."; fi
+}
+
+zurueck() {
+  app_installed || { log "Keine Anwendung installiert."; exit 1; }
+  local cur prev
+  cur="$(readlink -f "$BASE/current")"
+  prev="$(ls -1dt "$BASE"/releases/*/ | sed 's:/$::' | grep -vx "$cur" | head -n1 || true)"
+  [[ -n "$prev" ]] || { log "Keine vorige Version vorhanden."; exit 1; }
+  step "Zurück auf $(basename "$prev")"
+  log "Achtung: Datenbank-Migrationen der aktuellen Version werden NICHT zurückgenommen."
+  aktiviere "$prev"
+  if warte_gesund; then log "Vorige Version aktiv: $(grep '^Stand' "$prev/.release" | cut -d: -f2- | xargs)"
+  else
+    journalctl -u fv-web -n 30 --no-pager -o cat | sed 's/^/    /' || true
+    aktiviere "$cur"; log "FEHLER: Vorige Version startet nicht – aktuelle Version wieder aktiv."; exit 1
+  fi
+}
+
+# ----------------------------------------------------------------- Aufruf
+MODE=holen; REF=""; FORCE=0; PAKET=""; COMMIT=""; DESC=""
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --status) MODE=status ;;
+    --pruefen) MODE=pruefen ;;
+    --zurueck) MODE=zurueck ;;
+    --caddy) MODE=caddy ;;
+    --paket) MODE=paket; PAKET="${2:?}"; shift ;;
+    --commit) COMMIT="${2:?}"; shift ;;
+    --beschreibung) DESC="${2:?}"; shift ;;
+    -f|--erzwingen) FORCE=1 ;;
+    -h|--hilfe) sed -n '3,21p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
+    -*) echo "Unbekannte Option: $1" >&2; exit 2 ;;
+    *) REF="$1" ;;
+  esac
+  shift
+done
+
+case "$MODE" in
+  status)  status; exit 0 ;;
+  pruefen) pruefen; exit $? ;;
+  caddy)   if app_installed; then write_caddyfile app; else write_caddyfile platzhalter; fi; exit 0 ;;
+esac
+
+# Ab hier ändert sich etwas: sperren und protokollieren
+exec 9>/run/fv-web-update.lock
+flock -n 9 || { echo "Es läuft bereits ein Update." >&2; exit 1; }
+touch "$LOGF"; chmod 640 "$LOGF"
+exec > >(tee -a "$LOGF") 2>&1
+trap 'log "FEHLER in Zeile $LINENO (Exit-Code $?)"' ERR
+log "Start: fv-web-update $MODE ${REF:-}"
+
+case "$MODE" in
+  zurueck) zurueck ;;
+  paket)
+    [[ -f "$PAKET" ]] || { log "FEHLER: Paket fehlt: $PAKET"; exit 1; }
+    SOURCE="hochgeladen (lokaler Stand)"
+    installiere "$PAKET" "${COMMIT:-unbekannt}" "${DESC:-lokaler Stand}"
+    rm -f "$PAKET" ;;
+  holen)
+    REF="${REF:-$DEFAULT_REF}"
+    [[ "$REF" =~ ^[A-Za-z0-9._/-]+$ ]] || { log "FEHLER: Ungültiger Git-Stand: $REF"; exit 1; }
+    pruefen || exit 1
+    WORK="$(mktemp -d)"; trap 'rm -rf "$WORK"' EXIT
+    step "Hole $REF aus $REPO_URL"
+    git -C "$WORK" init -q
+    git -C "$WORK" fetch -q --depth 1 "$REPO_URL" "$REF" || { log "FEHLER: $REF nicht gefunden."; exit 1; }
+    COMMIT="$(git -C "$WORK" rev-parse FETCH_HEAD)"
+    DESC="$(git -C "$WORK" log -1 --format='%h %s (%ad)' --date=short FETCH_HEAD)"
+    log "Stand: $DESC"
+    if [[ $FORCE -eq 0 ]] && app_installed && grep -q "^Commit: *$COMMIT$" "$BASE/current/.release" && gesund; then
+      log "Dieser Stand ist bereits installiert – nichts zu tun (erneut installieren mit -f)."
+      exit 0
+    fi
+    git -C "$WORK" archive --format=tar.gz --prefix=fv-web/ FETCH_HEAD > "$WORK/paket.tar.gz"
+    SOURCE="$REPO_URL ($REF)"
+    installiere "$WORK/paket.tar.gz" "$COMMIT" "$DESC" ;;
+esac
+log "Fertig."
+UPDATE
+  chmod 750 /usr/local/sbin/fv-web-update
+  log "fv-web-update installiert: sudo fv-web-update [<ref>|--status|--zurueck|--pruefen]"
+  /usr/local/sbin/fv-web-update --caddy
+
+  if [[ "$NO_APP" != 1 && "$LOCAL_UPLOAD" != 1 ]]; then
+    step "Zugriff auf das Repository"
+    if ! /usr/local/sbin/fv-web-update --pruefen; then
+      log "Anwendung wird nicht installiert. Nach dem Eintragen des Schlüssels erneut mit -U aufrufen"
+      log "oder direkt auf dem Server: sudo fv-web-update"
+      exit 1
+    fi
+  fi
+}
+
+# --------------------------------------------------------------- Phase app
+phase_app() {
+  if [[ "$LOCAL_UPLOAD" == 1 ]]; then
+    /usr/local/sbin/fv-web-update --paket "$REMOTE_TAR" --commit "$APP_COMMIT" --beschreibung "$APP_DESC"
+  elif [[ -n "$GIT_REF" ]]; then
+    /usr/local/sbin/fv-web-update "$GIT_REF"
+  else
+    /usr/local/sbin/fv-web-update
+  fi
 }
 
 # ------------------------------------------------------------- Phase admin
@@ -921,11 +1128,15 @@ phase_summary() {
   else
     log "Anwendung:    noch nicht installiert (Platzhalterseite)"
   fi
-  log "E-Mail:       FV_MAIL=$(getkv "$ENVF" FV_MAIL) – Mailserver später in $ENVF eintragen (FV_MAIL=smtp, FV_SMTP_*)"
-  log "              und mit -U neu starten bzw.: sudo systemctl restart fv-web"
+  log "Updates:      sudo fv-web-update            (holt $(getkv "$DENV" DEFAULT_REF) aus $(getkv "$DENV" REPO_URL))"
+  log "              sudo fv-web-update --zurueck  (vorige Version)"
+  log "E-Mail:       FV_MAIL=$(getkv "$ENVF" FV_MAIL) – Mailserver später in $ENVF eintragen (FV_MAIL=smtp, FV_SMTP_*),"
+  log "              danach: sudo systemctl restart fv-web"
   log "Backup:       täglich ~03:30 nach $(getkv "$BENV" RESTIC_REPOSITORY)"
   log "              Wiederherstellungstest: sudo fv-web-restore -t"
-  [[ "$(getkv "$BENV" RESTIC_REPOSITORY)" == /* ]] && log "              HINWEIS: Ziel liegt auf diesem Server – später extern sichern (-B)."
+  if [[ "$(getkv "$BENV" RESTIC_REPOSITORY)" == /* ]]; then
+    log "              HINWEIS: Ziel liegt auf diesem Server – später extern sichern (-B)."
+  fi
   log "Öffentlicher Schlüssel für ein SFTP-Backup-Ziel:"
   sed 's/^/    /' /root/.ssh/fv-web-backup.pub
   log "WICHTIG: RESTIC_PASSWORD getrennt vom Server verwahren (Passwort-Manager):"
@@ -940,6 +1151,7 @@ phase_summary() {
 case "$PHASE" in
   base)    phase_base ;;
   harden)  phase_harden ;;
+  tool)    phase_tool ;;
   app)     phase_app ;;
   admin)   phase_admin ;;
   summary) phase_summary ;;
@@ -973,29 +1185,34 @@ else
   fi
 fi
 
+log "Phase 4: fv-web-update einrichten"
+run_remote tool <<<"$REMOTE_SCRIPT"
+
 if [[ $NO_APP -eq 1 ]]; then
-  log "Phase 4: Anwendung übersprungen (-N)."
+  log "Phase 5: Anwendung übersprungen (-N)."
 else
-  log "Phase 4: Anwendung installieren ($APP_DESC)"
-  TMP_TAR="$(mktemp)"
-  git -C "$REPO_DIR" archive --format=tar.gz --prefix=fv-web/ "$APP_COMMIT" > "$TMP_TAR"
-  if command -v sha256sum >/dev/null; then APP_SHA="$(sha256sum "$TMP_TAR" | cut -d' ' -f1)"
-  else APP_SHA="$(shasum -a 256 "$TMP_TAR" | cut -d' ' -f1)"; fi
-  REMOTE_TAR="/tmp/fv-web-$STAMP.tar.gz"
-  TAR_KB=$(( $(wc -c < "$TMP_TAR") / 1024 ))
-  # shellcheck disable=SC2029
-  ssh "${SSH_OPTS[@]}" "$TARGET" "umask 077; cat > '$REMOTE_TAR'" < "$TMP_TAR" || fail "Hochladen fehlgeschlagen."
-  rm -f "$TMP_TAR"
-  log "Paket hochgeladen (${TAR_KB} KB, SHA-256 ${APP_SHA:0:16}…)"
+  if [[ $LOCAL_UPLOAD -eq 1 ]]; then
+    log "Phase 5: Anwendung installieren (lokaler Stand $APP_DESC)"
+    TMP_TAR="$(mktemp)"
+    git -C "$REPO_DIR" archive --format=tar.gz --prefix=fv-web/ "$APP_COMMIT" > "$TMP_TAR"
+    TAR_KB=$(( $(wc -c < "$TMP_TAR") / 1024 ))
+    REMOTE_TAR="/tmp/fv-web-$STAMP.tar.gz"
+    # shellcheck disable=SC2029
+    ssh "${SSH_OPTS[@]}" "$TARGET" "umask 077; cat > '$REMOTE_TAR'" < "$TMP_TAR" || fail "Hochladen fehlgeschlagen."
+    rm -f "$TMP_TAR"
+    log "Paket hochgeladen (${TAR_KB} KB)."
+  else
+    log "Phase 5: Anwendung installieren (Server holt ${GIT_REF:-den Standard-Stand} von GitHub)"
+  fi
   run_remote app <<<"$REMOTE_SCRIPT"
 fi
 
 if [[ -n "$APP_ADMIN" ]]; then
-  log "Phase 5: Vorstandskonto"
+  log "Phase 6: Vorstandskonto"
   run_remote admin <<<"$REMOTE_SCRIPT"
 fi
 
-log "Phase 6: Zusammenfassung"
+log "Phase 7: Zusammenfassung"
 run_remote summary <<<"$REMOTE_SCRIPT"
 
 if curl -fsS --max-time 15 -o /dev/null "https://$DOMAIN/"; then
@@ -1004,5 +1221,5 @@ else
   log "HTTPS-Test https://$DOMAIN: noch nicht erreichbar (DNS/Zertifikat prüfen; Caddy versucht es automatisch erneut)."
 fi
 log "Fertig. Anmeldung künftig: ssh -p $SSH_PORT $ADMIN_USER@$SERVER"
-log "Neue Version einspielen: $0 -H $SERVER -d $DOMAIN -U$([[ $STANDALONE -eq 0 ]] && echo ' -r main')"
+log "Neue Version einspielen: ssh -p $SSH_PORT $ADMIN_USER@$SERVER sudo fv-web-update"
 log "Lokales Protokoll: $LOCAL_LOG"

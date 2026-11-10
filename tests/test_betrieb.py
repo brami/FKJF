@@ -26,18 +26,18 @@ def test_vorstand_anlegen_und_passwort_setzen(client):
     assert rechte.darf_bearbeiten(u) and u.is_staff and u.is_superuser
     assert not u.has_usable_password()
 
-    pfad = re.search(r"https?://[^/]+(/passwort/setzen/\S+)", out.getvalue()).group(1)
-    r = client.get(pfad)  # leitet auf eine Adresse ohne Token im Pfad weiter
+    pfad = re.search(r"https?://[^/]+(/konto/password/reset/key/\S+)", out.getvalue()).group(1)
+    r = client.get(pfad)  # allauth leitet auf eine Adresse ohne Schlüssel im Pfad weiter
     assert r.status_code == 302
     form_url = r["Location"]
-    r = client.post(form_url, {"new_password1": "Sehr-sicheres-Pw-2026",
-                               "new_password2": "Sehr-sicheres-Pw-2026"})
-    assert r.status_code == 302 and r["Location"] == "/passwort/gesetzt/"
+    r = client.post(form_url, {"password1": "Sehr-sicheres-Pw-2026",
+                               "password2": "Sehr-sicheres-Pw-2026"})
+    assert r.status_code == 302
     assert client.login(username="vera.vorstand", password="Sehr-sicheres-Pw-2026")
 
     # Link ist danach verbraucht
     client.logout()
-    assert "ungültig" in client.get(pfad, follow=True).content.decode()
+    assert "ungültig" in client.get(pfad, follow=True).content.decode().lower()
 
 
 def test_vorstand_anlegen_bestehendes_konto_behaelt_passwort():
@@ -46,6 +46,12 @@ def test_vorstand_anlegen_bestehendes_konto_behaelt_passwort():
     u.refresh_from_db()
     assert u.email == "neu@example.org" and u.check_password("altes-passwort-123")
     assert rechte.darf_bearbeiten(u) and not u.is_superuser
+
+
+def test_vorstand_anlegen_adresse_schon_vergeben():
+    User.objects.create_user("anna", "anna@example.org", "pw")
+    with pytest.raises(CommandError):
+        call_command("vorstand_anlegen", "bert", "ANNA@example.org", stdout=StringIO())
 
 
 def test_vorstand_anlegen_ungueltige_adresse():

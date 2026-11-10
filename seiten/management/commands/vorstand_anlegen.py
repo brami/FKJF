@@ -8,21 +8,12 @@ Es wird kein Passwort erzeugt oder angezeigt. Der Link ist 7 Tage gültig und nu
 einmal verwendbar.
 """
 
-from django.conf import settings
 from django.contrib.auth import get_user_model
 from django.contrib.auth.models import Group
-from django.contrib.auth.tokens import default_token_generator
 from django.core.management.base import BaseCommand, CommandError
 from django.core.validators import validate_email
-from django.urls import reverse
-from django.utils.encoding import force_bytes
-from django.utils.http import urlsafe_base64_encode
 
-
-def passwort_link(user) -> str:
-    uid = urlsafe_base64_encode(force_bytes(user.pk))
-    token = default_token_generator.make_token(user)
-    return settings.FV_BASIS_URL + reverse("password_reset_confirm", args=[uid, token])
+from seiten.konto import einladungs_link
 
 
 class Command(BaseCommand):
@@ -44,6 +35,8 @@ class Command(BaseCommand):
         except Exception:
             raise CommandError(f"Ungültige E-Mail-Adresse: {email}")
         User = get_user_model()
+        if User.objects.filter(email__iexact=email).exclude(username=benutzername).exists():
+            raise CommandError(f"Die E-Mail-Adresse {email} gehört bereits zu einem anderen Konto.")
         user, neu = User.objects.get_or_create(username=benutzername, defaults={"email": email})
         user.email = email
         if vorname:
@@ -62,4 +55,4 @@ class Command(BaseCommand):
         self.stdout.write(f"{'Angelegt' if neu else 'Aktualisiert'}: {user.username} "
                           f"(Vorstand{', Administrator' if user.is_superuser else ''})")
         self.stdout.write("Link zum Setzen des Passworts (7 Tage gültig, nur einmal verwendbar):")
-        self.stdout.write(passwort_link(user))
+        self.stdout.write(einladungs_link(user))

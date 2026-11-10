@@ -68,7 +68,7 @@ ADRESSEN = [
 def test_nicht_angemeldet_wird_zur_anmeldung_geleitet(client, seite, name, mit_pk, methode):
     url = reverse(name, args=[seite.pk] if mit_pk else [])
     r = client.get(url) if methode == "GET" else client.post(url, formdaten())
-    assert r.status_code == 302 and "/anmelden/" in r["Location"]
+    assert r.status_code == 302 and "/konto/login/" in r["Location"]
     assert Seite.objects.filter(pk=seite.pk, titel="Einladung").exists()
 
 

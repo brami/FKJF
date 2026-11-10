@@ -1,0 +1,25 @@
+{% extends "base.html" %}
+
+{% block titel %}Mein Konto – Förderverein KF/JF Kreuzau{% endblock %}
+{% block robots %}<meta name="robots" content="noindex">{% endblock %}
+
+{% block inhalt %}
+  <h1>Mein Konto</h1>
+  <table class="tabelle">
+    <tr><th>Name</th><td>{{ user.get_full_name|default:"–" }}</td></tr>
+    <tr><th>Benutzername</th><td>{{ user.username }}</td></tr>
+    <tr><th>E-Mail-Adresse</th><td>{{ user.email|default:"–" }}</td></tr>
+    <tr><th>Gruppe</th><td>{% for g in user.groups.all %}{{ g.name }}{% if not forloop.last %}, {% endif %}{% empty %}–{% endfor %}</td></tr>
+  </table>
+  <p class="hilfe">Name, E-Mail-Adresse und Gruppe ändert der Vorstand.</p>
+
+  <h2>Sicherheit</h2>
+  <ul>
+    <li><a href="{% url 'account_change_password' %}">Passwort ändern</a></li>
+    <li>Zwei-Faktor-Anmeldung:
+      {% if zwei_faktor %}eingerichtet – <a href="{% url 'mfa_index' %}">verwalten</a>
+      {% else %}nicht eingerichtet – <a href="{% url 'mfa_activate_totp' %}">einrichten</a>{% endif %}
+      {% if pflicht %}<span class="hilfe">(für den Vorstand vorgeschrieben)</span>{% endif %}
+    </li>
+  </ul>
+{% endblock %}

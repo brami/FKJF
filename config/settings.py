@@ -39,6 +39,9 @@ INSTALLED_APPS = [
     "django.contrib.messages",
     "django.contrib.staticfiles",
     "simple_history",
+    "allauth",
+    "allauth.account",
+    "allauth.mfa",
     "seiten",
 ]
 
@@ -51,6 +54,8 @@ MIDDLEWARE = [
     "django.contrib.messages.middleware.MessageMiddleware",
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
     "django.middleware.csp.ContentSecurityPolicyMiddleware",
+    "allauth.account.middleware.AccountMiddleware",
+    "seiten.konto.ZweiFaktorPflichtMiddleware",
     "simple_history.middleware.HistoryRequestMiddleware",
 ]
 
@@ -67,6 +72,7 @@ TEMPLATES = [
                 "django.contrib.auth.context_processors.auth",
                 "django.contrib.messages.context_processors.messages",
                 "django.template.context_processors.csp",
+                "seiten.konto.kontext",
             ],
         },
     },
@@ -102,9 +108,35 @@ AUTH_PASSWORD_VALIDATORS = [
     {"NAME": "django.contrib.auth.password_validation.NumericPasswordValidator"},
 ]
 
-LOGIN_URL = "login"
+AUTHENTICATION_BACKENDS = [
+    "django.contrib.auth.backends.ModelBackend",
+    "allauth.account.auth_backends.AuthenticationBackend",
+]
+LOGIN_URL = "account_login"
 LOGIN_REDIRECT_URL = "startseite"
 LOGOUT_REDIRECT_URL = "startseite"
+
+# Anmeldung (django-allauth). Konten legt nur der Vorstand an (keine Registrierung).
+ACCOUNT_ADAPTER = "seiten.konto.KontoAdapter"
+ACCOUNT_LOGIN_METHODS = {"username", "email"}
+ACCOUNT_SIGNUP_FIELDS = ["email*", "username*", "password1*", "password2*"]
+ACCOUNT_EMAIL_VERIFICATION = "none"
+ACCOUNT_UNIQUE_EMAIL = True           # nötig für die Anmeldung mit der E-Mail-Adresse
+ACCOUNT_LOGOUT_ON_PASSWORD_CHANGE = False
+ACCOUNT_LOGIN_ON_PASSWORD_RESET = False
+ACCOUNT_EMAIL_SUBJECT_PREFIX = "[Förderverein KF/JF Kreuzau] "
+ACCOUNT_PASSWORD_INPUT_RENDER_VALUE = False
+MFA_SUPPORTED_TYPES = ["totp", "recovery_codes"]
+MFA_TOTP_ISSUER = "Förderverein KF/JF Kreuzau"
+# Zwei-Faktor-Anmeldung ist für den Vorstand (und Administratoren) Pflicht
+FV_ZWEI_FAKTOR_PFLICHT = env_bool("FV_ZWEI_FAKTOR_PFLICHT", True)
+
+# Zwischenspeicher in der Datenbank: gemeinsam für alle gunicorn-Prozesse,
+# u. a. für die Begrenzung von Anmeldeversuchen
+CACHES = {"default": {
+    "BACKEND": "django.core.cache.backends.db.DatabaseCache",
+    "LOCATION": "fv_cache",
+}}
 
 LANGUAGE_CODE = "de-de"
 TIME_ZONE = "Europe/Berlin"
@@ -187,7 +219,7 @@ SERVER_EMAIL = DEFAULT_FROM_EMAIL
 ADMINS = [a for a in env("FV_ADMINS", "").split(",") if a]
 # Basis-Adresse für Links in E-Mails und Befehlen, z. B. https://foerderverein-kf-jf-kreuzau.de
 FV_BASIS_URL = env("FV_BASIS_URL", "http://127.0.0.1:8000").rstrip("/")
-PASSWORD_RESET_TIMEOUT = 7 * 24 * 3600  # Einladungs-/Passwortlinks: 7 Tage
+PASSWORD_RESET_TIMEOUT = 7 * 24 * 3600  # Einladungs- und Passwort-Links: 7 Tage
 
 LOGGING = {
     "version": 1,

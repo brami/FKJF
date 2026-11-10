@@ -1,0 +1,40 @@
+{% extends "base.html" %}
+
+{% block titel %}Fassung vom {{ datum }}: {{ seite.titel }} – Förderverein KF/JF Kreuzau{% endblock %}
+{% block robots %}<meta name="robots" content="noindex">{% endblock %}
+
+{% block inhalt %}
+  <p><a href="{% url 'seite_verlauf' seite.pk %}">← Zurück zum Versionsverlauf</a></p>
+  <h1>Fassung vom {{ datum }}</h1>
+  <p>Bearbeitet von {% if alt.history_user %}{{ alt.history_user.get_full_name|default:alt.history_user.username }}{% else %}–{% endif %}.</p>
+
+  <h2>Unterschiede zur aktuellen Fassung</h2>
+  {% if felder %}
+    <table class="tabelle">
+      <thead><tr><th>Feld</th><th>Diese Fassung</th><th>Aktuell</th></tr></thead>
+      <tbody>{% for name, alt_wert, neu_wert in felder %}
+        <tr><td>{{ name }}</td><td>{{ alt_wert }}</td><td>{{ neu_wert }}</td></tr>
+      {% endfor %}</tbody>
+    </table>
+  {% endif %}
+  {% if gleich_inhalt %}
+    <p>Der Text ist identisch mit der aktuellen Fassung.</p>
+  {% else %}
+    <div class="diff">{{ unterschiede|safe }}</div>
+    <p class="hilfe">Grün: nur in der aktuellen Fassung, rot: nur in dieser Fassung, gelb: geändert.</p>
+  {% endif %}
+
+  <form method="post" action="{% url 'seite_wiederherstellen' seite.pk alt.history_id %}" class="knoepfe">
+    {% csrf_token %}
+    <button type="submit">Diese Fassung wiederherstellen</button>
+    <span class="hilfe">Titel, Datum, Sichtbarkeit und Text werden übernommen; Anhänge bleiben unverändert.
+      Die aktuelle Fassung bleibt im Verlauf erhalten.</span>
+  </form>
+
+  <h2>So sah die Seite aus</h2>
+  <article class="seite vorschau-alt">
+    <p class="meta">{{ alt.datum|date:"j. F Y" }}</p>
+    <h1>{{ alt.titel }}</h1>
+    <div class="text">{{ alt.inhalt|safe }}</div>
+  </article>
+{% endblock %}

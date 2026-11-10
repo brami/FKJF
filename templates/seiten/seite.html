@@ -25,8 +25,9 @@
 
     {% if darf_bearbeiten %}
       <p class="aktionen">
-        <a href="{% url 'admin:seiten_seite_change' seite.pk %}">Bearbeiten</a>
-        · <a href="{% url 'admin:seiten_seite_history' seite.pk %}">Versionsverlauf</a>
+        <a href="{% url 'seite_bearbeiten' seite.pk %}">Bearbeiten</a>
+        · <a href="{% url 'seite_verlauf' seite.pk %}">Versionsverlauf</a>
+        · <a href="{% url 'seite_loeschen' seite.pk %}">Löschen</a>
       </p>
     {% endif %}
   </article>

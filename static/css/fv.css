@@ -47,3 +47,39 @@ button[type=submit]:not(.link) { background: var(--akzent); color: #fff; border:
                                  padding: .5rem 1.2rem; font: inherit; cursor: pointer; }
 
 .fuss { border-top: 1px solid var(--linie); color: var(--grau); font-size: .9rem; padding: 1.5rem 0; }
+
+/* Meldungen */
+.nachricht { background: #e8f4ea; border-left: 4px solid #2e7d32; padding: .5rem .8rem; }
+.nachricht.error { background: #fdecea; border-color: var(--akzent); }
+
+/* Bearbeitung */
+.aktionen.oben { margin: 0 0 1rem; }
+a.knopf { display: inline-block; background: var(--akzent); color: #fff; padding: .4rem 1rem;
+          text-decoration: none; }
+.bearbeiten .zeile { display: flex; flex-wrap: wrap; gap: 1rem; }
+.bearbeiten .feld { margin-bottom: 1rem; }
+.bearbeiten .feld.breit { flex: 1 1 100%; }
+.bearbeiten input[type=text], .bearbeiten input:not([type]) { max-width: none; }
+.bearbeiten #id_titel { width: 100%; max-width: none; font-size: 1.15rem; }
+.bearbeiten select, .bearbeiten input[type=date] { padding: .4rem; font: inherit; }
+.bearbeiten textarea { width: 100%; font: .95rem/1.4 monospace; }
+.hilfe { color: var(--grau); font-size: .88rem; margin: .2rem 0; }
+.errorlist { color: var(--akzent); margin: .2rem 0; padding-left: 1.2rem; }
+fieldset.anhaenge { border: 1px solid var(--linie); padding: .8rem 1rem; margin: 1.5rem 0; }
+.knoepfe { display: flex; gap: 1rem; align-items: center; flex-wrap: wrap; }
+button.gefahr { background: #7a0c10 !important; }
+.tabelle { border-collapse: collapse; width: 100%; margin: .5rem 0 1rem; font-size: .95rem; }
+.tabelle th, .tabelle td { border-bottom: 1px solid var(--linie); padding: .35rem .5rem;
+                           text-align: left; vertical-align: top; }
+.tabelle input[type=text], .tabelle input:not([type]) { width: 100%; padding: .3rem; font: inherit; }
+
+/* Versionsvergleich (difflib.HtmlDiff) */
+.diff { overflow-x: auto; }
+.diff table.diff { border-collapse: collapse; font: .85rem/1.4 monospace; width: 100%; }
+.diff td { padding: 0 .4rem; vertical-align: top; }
+.diff .diff_header { color: var(--grau); text-align: right; }
+.diff .diff_next { display: none; }
+.diff .diff_add { background: #d9f2dc; }
+.diff .diff_chg { background: #fff3c4; }
+.diff .diff_sub { background: #fbd9d9; }
+.vorschau-alt { border: 1px dashed var(--linie); padding: 0 1rem 1rem; }

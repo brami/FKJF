@@ -1,0 +1,18 @@
+{% extends "base.html" %}
+
+{% block titel %}Löschen: {{ seite.titel }} – Förderverein KF/JF Kreuzau{% endblock %}
+{% block robots %}<meta name="robots" content="noindex">{% endblock %}
+
+{% block inhalt %}
+  <h1>Seite löschen?</h1>
+  <p>Soll die Seite <strong>„{{ seite.titel }}“</strong> vom {{ seite.datum|date:"j. F Y" }}
+     wirklich gelöscht werden?</p>
+  {% with n=seite.anhaenge.count %}
+    {% if n %}<p>Dabei werden auch {{ n }} Anhang/Anhänge endgültig gelöscht.</p>{% endif %}
+  {% endwith %}
+  <form method="post" class="knoepfe">
+    {% csrf_token %}
+    <button type="submit" class="gefahr">Endgültig löschen</button>
+    <a href="{{ seite.get_absolute_url }}">Abbrechen</a>
+  </form>
+{% endblock %}

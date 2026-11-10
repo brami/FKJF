@@ -9,7 +9,6 @@ from django.core.validators import FileExtensionValidator
 from django.db import models
 from django.urls import reverse
 from django.utils import timezone
-from django.utils.functional import LazyObject
 from django.utils.html import strip_tags
 from django.utils.text import Truncator
 from simple_history.models import HistoricalRecords
@@ -39,14 +38,13 @@ def bereinige_html(html: str) -> str:
     )
 
 
-class PrivateStorage(LazyObject):
-    """Ablage für Anhänge außerhalb des Webverzeichnisses (ohne öffentliche URL)."""
+def private_storage():
+    """Ablage für Anhänge außerhalb des Webverzeichnisses (ohne öffentliche URL).
 
-    def _setup(self):
-        self._wrapped = FileSystemStorage(location=settings.PRIVATE_MEDIA_ROOT, base_url=None)
-
-
-private_storage = PrivateStorage()
+    Als Funktion angegeben, damit der Pfad aus den Einstellungen kommt und nicht
+    in den Migrationen festgeschrieben wird.
+    """
+    return FileSystemStorage(location=settings.PRIVATE_MEDIA_ROOT, base_url=None)
 
 
 class Seite(models.Model):
@@ -122,3 +120,10 @@ class Anhang(models.Model):
 
     def get_absolute_url(self):
         return reverse("anhang", args=[self.pk])
+
+
+@models.signals.post_delete.connect
+def _anhang_datei_loeschen(sender, instance, **kwargs):
+    """Beim Löschen eines Anhangs (auch über das Löschen der Seite) die Datei entfernen."""
+    if sender is Anhang and instance.datei:
+        instance.datei.delete(save=False)

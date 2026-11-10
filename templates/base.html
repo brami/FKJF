@@ -30,6 +30,7 @@
   </header>
 
   <main id="inhalt" class="rahmen">
+    {% for m in messages %}<p class="nachricht {{ m.tags }}" role="status">{{ m }}</p>{% endfor %}
     {% block inhalt %}{% endblock %}
   </main>
 

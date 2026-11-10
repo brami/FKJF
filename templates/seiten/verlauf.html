@@ -1,0 +1,26 @@
+{% extends "base.html" %}
+
+{% block titel %}Versionsverlauf: {{ seite.titel }} – Förderverein KF/JF Kreuzau{% endblock %}
+{% block robots %}<meta name="robots" content="noindex">{% endblock %}
+
+{% block inhalt %}
+  <p><a href="{{ seite.get_absolute_url }}">← Zurück zur Seite</a></p>
+  <h1>Versionsverlauf</h1>
+  <p>„{{ seite.titel }}“ – neueste Fassung zuerst.</p>
+
+  <table class="tabelle">
+    <thead><tr><th>Zeitpunkt</th><th>Von</th><th>Art</th><th>Titel</th><th></th></tr></thead>
+    <tbody>
+    {% for f in fassungen %}
+      <tr>
+        <td>{{ f.history_date|date:"j.n.Y H:i" }}</td>
+        <td>{% if f.history_user %}{{ f.history_user.get_full_name|default:f.history_user.username }}{% else %}–{% endif %}</td>
+        <td>{% if f.history_type == "+" %}angelegt{% elif f.history_type == "~" %}geändert{% else %}gelöscht{% endif %}
+            {% if f.history_change_reason %}<br><span class="hilfe">{{ f.history_change_reason }}</span>{% endif %}</td>
+        <td>{{ f.titel }}</td>
+        <td>{% if forloop.first %}<em>aktuell</em>{% else %}<a href="{% url 'seite_fassung' seite.pk f.history_id %}">Ansehen und vergleichen</a>{% endif %}</td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+{% endblock %}

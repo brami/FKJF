@@ -1,6 +1,7 @@
 {% extends "base.html" %}
 
 {% block inhalt %}
+  {% if darf_bearbeiten %}<p class="aktionen oben"><a class="knopf" href="{% url 'seite_neu' %}">+ Neue Seite</a></p>{% endif %}
   {% for s in seiten %}
     <article class="vorschau">
       <p class="meta">

@@ -1,0 +1,55 @@
+{% extends "base.html" %}
+{% load static %}
+
+{% block titel %}{% if seite.pk %}Bearbeiten: {{ seite.titel }}{% else %}Neue Seite{% endif %} – Förderverein KF/JF Kreuzau{% endblock %}
+{% block robots %}<meta name="robots" content="noindex">{% endblock %}
+
+{% block inhalt %}
+  <h1>{% if seite.pk %}Seite bearbeiten{% else %}Neue Seite{% endif %}</h1>
+
+  <form method="post" enctype="multipart/form-data" class="formular bearbeiten">
+    {% csrf_token %}
+    {{ form.non_field_errors }}
+
+    <div class="zeile">
+      <div class="feld breit">{{ form.titel.label_tag }} {{ form.titel }} {{ form.titel.errors }}</div>
+    </div>
+    <div class="zeile">
+      <div class="feld">{{ form.datum.label_tag }} {{ form.datum }} {{ form.datum.errors }}</div>
+      <div class="feld">{{ form.stufe.label_tag }} {{ form.stufe }} {{ form.stufe.errors }}
+        <p class="hilfe">{{ form.stufe.help_text }}</p></div>
+    </div>
+    <div class="feld">{{ form.inhalt.label_tag }} {{ form.inhalt }} {{ form.inhalt.errors }}</div>
+
+    <fieldset class="anhaenge">
+      <legend>Anhänge</legend>
+      <p class="hilfe">Anhänge können nur Personen herunterladen, die diese Seite sehen dürfen.</p>
+      {{ anhang_formset.management_form }}
+      {{ anhang_formset.non_form_errors }}
+      {% if anhang_formset.forms %}
+        <table class="tabelle">
+          <thead><tr><th>Datei</th><th>Bezeichnung (optional)</th><th>Entfernen</th></tr></thead>
+          <tbody>
+          {% for f in anhang_formset %}
+            <tr>
+              <td>{{ f.id }}<a href="{{ f.instance.get_absolute_url }}">{{ f.instance.dateiname }}</a></td>
+              <td>{{ f.bezeichnung }} {{ f.bezeichnung.errors }}</td>
+              <td>{{ f.DELETE }}</td>
+            </tr>
+          {% endfor %}
+          </tbody>
+        </table>
+      {% endif %}
+      <div class="feld">{{ neue.dateien.label_tag }} {{ neue.dateien }}
+        <p class="hilfe">{{ neue.dateien.help_text }}</p>{{ neue.dateien.errors }}</div>
+    </fieldset>
+
+    <p class="knoepfe">
+      <button type="submit">Speichern</button>
+      <a href="{% if seite.pk %}{{ seite.get_absolute_url }}{% else %}{% url 'startseite' %}{% endif %}">Abbrechen</a>
+    </p>
+  </form>
+
+  <script src="{% static 'vendor/tinymce/tinymce.min.js' %}"></script>
+  <script src="{% static 'js/editor.js' %}" data-basis="{% static 'vendor/tinymce' %}"></script>
+{% endblock %}

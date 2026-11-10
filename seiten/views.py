@@ -20,7 +20,10 @@ def _verweigert(request):
 @require_GET
 def startseite(request):
     seiten = rechte.sichtbare_seiten(request.user).prefetch_related("anhaenge")
-    return render(request, "seiten/startseite.html", {"seiten": seiten})
+    return render(request, "seiten/startseite.html", {
+        "seiten": seiten,
+        "darf_bearbeiten": rechte.darf_bearbeiten(request.user),
+    })
 
 
 @require_GET

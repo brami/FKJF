@@ -25,6 +25,9 @@ Tests: `python -m pytest`
   Bearbeitungsrechte entschieden wird
 - `seiten/models.py` – Seite und Anhang (mit Versionsverlauf, HTML-Bereinigung)
 - `seiten/views.py` – Startseite, Seitenansicht, Anhang-Download
+- `seiten/bearbeiten.py` – Bearbeitung für den Vorstand: Seiten anlegen, ändern,
+  löschen, Anhänge verwalten, Versionsverlauf mit Vergleich und Wiederherstellen
+- `static/vendor/tinymce/` – Editor TinyMCE 8 (GPL-2.0-or-later), nur benötigte Teile
 - `tests/` – Rechtematrix für alle Benutzerarten und Stufen
 
 ## Einstellungen (Umgebungsvariablen)

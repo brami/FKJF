@@ -224,3 +224,23 @@ def test_zwei_faktor_aendern_verlangt_spaeter_wieder_das_passwort(client, pflich
     s.save()
     r = client.get(reverse("mfa_deactivate_totp"))
     assert r.status_code == 302 and "/konto/reauthenticate/" in r["Location"]
+
+
+@pytest.mark.parametrize("url", ["/konto/password/reset/", "/konto/logout/", "/konto/2fa/totp/activate/"])
+def test_konto_seiten_siezen(client, url):
+    client.force_login(konto("anna", "Mitglieder"))
+    html = client.get(url, follow=True).content.decode()
+    for du in [" du ", " dein", " Du ", "Deine ", " dir ", " gib "]:
+        assert du not in html, (url, du)
+
+
+def test_passwort_vergessen_mail_siezt(client):
+    konto("anna")
+    client.post(reverse("account_reset_password"), {"email": "anna@example.org"})
+    text = mail.outbox[0].body
+    assert "Sie erhalten diese E-Mail" in text and " du " not in text
+
+
+def test_keine_mail_an_unbekannte_adresse(client):
+    client.post(reverse("account_reset_password"), {"email": "unbekannt@example.org"})
+    assert len(mail.outbox) == 0

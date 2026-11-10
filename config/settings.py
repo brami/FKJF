@@ -126,6 +126,7 @@ ACCOUNT_LOGOUT_ON_PASSWORD_CHANGE = False
 ACCOUNT_LOGIN_ON_PASSWORD_RESET = False
 ACCOUNT_EMAIL_SUBJECT_PREFIX = "[Förderverein KF/JF Kreuzau] "
 ACCOUNT_PASSWORD_INPUT_RENDER_VALUE = False
+ACCOUNT_EMAIL_UNKNOWN_ACCOUNTS = False   # keine Mail mit Registrierungsangebot an unbekannte Adressen
 MFA_SUPPORTED_TYPES = ["totp", "recovery_codes"]
 MFA_TOTP_ISSUER = "Förderverein KF/JF Kreuzau"
 # Zwei-Faktor-Anmeldung ist für den Vorstand (und Administratoren) Pflicht
@@ -139,6 +140,8 @@ CACHES = {"default": {
 }}
 
 LANGUAGE_CODE = "de-de"
+# Eigene Übersetzungen haben Vorrang: Sie-Form für die Texte von django-allauth
+LOCALE_PATHS = [BASE_DIR / "locale"]
 TIME_ZONE = "Europe/Berlin"
 USE_I18N = True
 USE_TZ = True

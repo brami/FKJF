@@ -1,0 +1,33 @@
+{% extends "base.html" %}
+
+{% block titel %}{{ seite.titel }} – Förderverein KF/JF Kreuzau{% endblock %}
+{% block robots %}{% if seite.stufe %}<meta name="robots" content="noindex, nofollow">{% endif %}{% endblock %}
+
+{% block inhalt %}
+  <article class="seite">
+    <p class="meta">
+      <time datetime="{{ seite.datum|date:'Y-m-d' }}">{{ seite.datum|date:"j. F Y" }}</time>
+      {% if seite.stufe %}<span class="marke-stufe">{{ seite.get_stufe_display }}</span>{% endif %}
+    </p>
+    <h1>{{ seite.titel }}</h1>
+    <div class="text">{{ seite.inhalt|safe }}</div>
+
+    {% if anhaenge %}
+      <section class="anhaenge">
+        <h2>Anhänge</h2>
+        <ul>
+          {% for a in anhaenge %}
+            <li><a href="{{ a.get_absolute_url }}">{{ a }}</a></li>
+          {% endfor %}
+        </ul>
+      </section>
+    {% endif %}
+
+    {% if darf_bearbeiten %}
+      <p class="aktionen">
+        <a href="{% url 'admin:seiten_seite_change' seite.pk %}">Bearbeiten</a>
+        · <a href="{% url 'admin:seiten_seite_history' seite.pk %}">Versionsverlauf</a>
+      </p>
+    {% endif %}
+  </article>
+{% endblock %}

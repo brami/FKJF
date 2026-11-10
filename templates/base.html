@@ -1,0 +1,43 @@
+{% load static %}<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block titel %}Förderverein KF/JF Kreuzau{% endblock %}</title>
+  <link rel="stylesheet" href="{% static 'css/fv.css' %}">
+  {% block robots %}{% endblock %}
+</head>
+<body>
+  <a class="skip" href="#inhalt">Direkt zum Inhalt</a>
+  <header class="kopf">
+    <div class="rahmen">
+      <a class="marke" href="{% url 'startseite' %}">
+        <span class="name">Förderverein KF/JF Kreuzau</span>
+        <span class="slogan">Die Unterstützung der Jugendarbeit in der Feuerwehr Kreuzau</span>
+      </a>
+      <nav class="konto" aria-label="Benutzerkonto">
+        {% if user.is_authenticated %}
+          <span>{{ user.get_full_name|default:user.username }}</span>
+          {% if user.is_staff %}<a href="{% url 'admin:index' %}">Verwaltung</a>{% endif %}
+          <form method="post" action="{% url 'logout' %}">{% csrf_token %}
+            <button type="submit" class="link">Abmelden</button>
+          </form>
+        {% else %}
+          <a href="{% url 'login' %}">Anmelden</a>
+        {% endif %}
+      </nav>
+    </div>
+  </header>
+
+  <main id="inhalt" class="rahmen">
+    {% block inhalt %}{% endblock %}
+  </main>
+
+  <footer class="fuss">
+    <div class="rahmen">
+      {# Links auf Impressum/Datenschutz folgen, sobald die Seiten angelegt sind #}
+      &copy; Förderverein der Kinder- und Jugendfeuerwehr Kreuzau e.&nbsp;V.
+    </div>
+  </footer>
+</body>
+</html>

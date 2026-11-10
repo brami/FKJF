@@ -1,0 +1,18 @@
+{% extends "base.html" %}
+
+{% block inhalt %}
+  {% for s in seiten %}
+    <article class="vorschau">
+      <p class="meta">
+        <time datetime="{{ s.datum|date:'Y-m-d' }}">{{ s.datum|date:"j. F Y" }}</time>
+        {% if s.stufe %}<span class="marke-stufe">{{ s.get_stufe_display }}</span>{% endif %}
+      </p>
+      <h2><a href="{{ s.get_absolute_url }}">{{ s.titel }}</a></h2>
+      <p>{{ s.vorschau }}</p>
+      {% if s.anhaenge.all %}<p class="hinweis">{{ s.anhaenge.all|length }} Anhang/Anhänge</p>{% endif %}
+      <p><a href="{{ s.get_absolute_url }}">Weiterlesen</a></p>
+    </article>
+  {% empty %}
+    <p>Es gibt noch keine Seiten.</p>
+  {% endfor %}
+{% endblock %}

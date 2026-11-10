@@ -1,0 +1,49 @@
+/* Schlichtes Layout, angelehnt an die bisherige Seite (vorläufig). */
+:root {
+  --text: #1f2328;
+  --grau: #5b636b;
+  --linie: #d9dde1;
+  --hell: #f4f5f7;
+  --akzent: #b3141b; /* Feuerwehrrot */
+  --breite: 52rem;
+}
+* { box-sizing: border-box; }
+body {
+  margin: 0;
+  font: 1.0625rem/1.6 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  color: var(--text);
+  background: #fff;
+}
+a { color: var(--akzent); }
+.rahmen { max-width: var(--breite); margin: 0 auto; padding: 0 1rem; }
+.skip { position: absolute; left: -999px; }
+.skip:focus { left: 1rem; top: 1rem; background: #fff; padding: .5rem; }
+
+.kopf { border-bottom: 4px solid var(--akzent); background: var(--hell); }
+.kopf .rahmen { display: flex; flex-wrap: wrap; justify-content: space-between;
+                align-items: center; gap: 1rem; padding-top: 1rem; padding-bottom: 1rem; }
+.marke { text-decoration: none; color: var(--text); }
+.marke .name { display: block; font-size: 1.5rem; font-weight: 700; }
+.marke .slogan { display: block; color: var(--grau); font-size: .95rem; }
+.konto { display: flex; gap: 1rem; align-items: center; font-size: .95rem; }
+.konto form { margin: 0; }
+button.link { background: none; border: 0; padding: 0; color: var(--akzent);
+              text-decoration: underline; font: inherit; cursor: pointer; }
+
+main { padding-top: 1.5rem; padding-bottom: 3rem; }
+.vorschau { border-bottom: 1px solid var(--linie); padding: 1rem 0; }
+.vorschau h2 { margin: .2rem 0 .4rem; font-size: 1.3rem; }
+.vorschau h2 a { color: var(--text); text-decoration: none; }
+.meta { color: var(--grau); font-size: .9rem; margin: 0; display: flex; gap: .75rem; }
+.marke-stufe { border: 1px solid var(--linie); border-radius: 3px; padding: 0 .4rem; }
+.hinweis { color: var(--grau); font-size: .9rem; }
+.anhaenge { margin-top: 2rem; padding-top: 1rem; border-top: 1px solid var(--linie); }
+.aktionen { margin-top: 2rem; font-size: .95rem; }
+.fehler { color: var(--akzent); }
+.formular div { margin-bottom: .8rem; }
+.formular label { display: block; font-weight: 600; }
+.formular input { width: 100%; max-width: 22rem; padding: .4rem; font: inherit; }
+button[type=submit]:not(.link) { background: var(--akzent); color: #fff; border: 0;
+                                 padding: .5rem 1.2rem; font: inherit; cursor: pointer; }
+
+.fuss { border-top: 1px solid var(--linie); color: var(--grau); font-size: .9rem; padding: 1.5rem 0; }

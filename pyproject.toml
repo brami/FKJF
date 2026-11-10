@@ -3,16 +3,8 @@ name = "fv-web"
 version = "0.1.0"
 description = "Webseite des Fördervereins der Kinder- und Jugendfeuerwehr Kreuzau"
 requires-python = ">=3.13"
-dependencies = [
-    "django>=6.1,<6.2",
-    "django-simple-history>=3.13",
-    "nh3>=0.3",
-]
-
-[project.optional-dependencies]
-postgres = ["psycopg[binary]>=3.2"]
-server = ["gunicorn>=23"]
-test = ["pytest>=9", "pytest-django>=4.14"]
+# Abhängigkeiten mit festen Versionen: requirements.txt (Server) und
+# requirements-dev.txt (Entwicklung, Tests). Das Projekt wird nicht als Paket installiert.
 
 [tool.pytest.ini_options]
 DJANGO_SETTINGS_MODULE = "config.settings_test"

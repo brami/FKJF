@@ -1,5 +1,6 @@
 from django.contrib.auth.views import redirect_to_login
-from django.http import FileResponse, Http404
+from django.db import connection
+from django.http import FileResponse, Http404, HttpResponse
 from django.shortcuts import get_object_or_404, render
 from django.views.decorators.http import require_GET
 
@@ -49,4 +50,14 @@ def anhang(request, pk):
         raise Http404
     antwort = FileResponse(datei, as_attachment=True, filename=a.dateiname)
     antwort["Cache-Control"] = "private, no-store"
+    return antwort
+
+
+@require_GET
+def gesund(request):
+    """Statusprüfung für Installation und Überwachung: Anwendung und Datenbank laufen."""
+    with connection.cursor() as c:
+        c.execute("SELECT 1")
+    antwort = HttpResponse("ok", content_type="text/plain")
+    antwort["Cache-Control"] = "no-store"
     return antwort

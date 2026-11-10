@@ -152,6 +152,43 @@ if not DEBUG:
     SECURE_HSTS_SECONDS = int(env("FV_HSTS_SECONDS", "31536000"))
     SECURE_HSTS_INCLUDE_SUBDOMAINS = env_bool("FV_HSTS_SUBDOMAINS", False)
 
+# E-Mail (Django 6.1: MAILERS)
+#   FV_MAIL=smtp     Versand über FV_SMTP_HOST, FV_SMTP_PORT, FV_SMTP_USER,
+#                    FV_SMTP_PASSWORD, FV_SMTP_TLS (starttls|ssl|aus)
+#   FV_MAIL=datei    E-Mails nur als Dateien in FV_MAIL_DATEIEN ablegen (Standard,
+#                    solange der Mailserver noch nicht eingerichtet ist)
+#   FV_MAIL=konsole  Ausgabe im Terminal (Entwicklung)
+FV_MAIL = env("FV_MAIL", "konsole" if DEBUG else "datei")
+if FV_MAIL == "smtp":
+    _tls = env("FV_SMTP_TLS", "starttls")
+    MAILERS = {"default": {
+        "BACKEND": "django.core.mail.backends.smtp.EmailBackend",
+        "OPTIONS": {
+            "host": env("FV_SMTP_HOST", "localhost"),
+            "port": int(env("FV_SMTP_PORT", "587")),
+            "username": env("FV_SMTP_USER", ""),
+            "password": env("FV_SMTP_PASSWORD", ""),
+            "use_tls": _tls == "starttls",
+            "use_ssl": _tls == "ssl",
+            "timeout": 30,
+        },
+    }}
+elif FV_MAIL == "datei":
+    MAILERS = {"default": {
+        "BACKEND": "django.core.mail.backends.filebased.EmailBackend",
+        "OPTIONS": {"file_path": env("FV_MAIL_DATEIEN", str(BASE_DIR / "mails"))},
+    }}
+    # Gewollt, solange kein Mailserver eingetragen ist: Prüfung "nur für Entwicklung" abschalten
+    SILENCED_SYSTEM_CHECKS = ["mail.E001"]
+else:
+    MAILERS = {"default": {"BACKEND": "django.core.mail.backends.console.EmailBackend"}}
+DEFAULT_FROM_EMAIL = env("FV_MAIL_ABSENDER", "Förderverein KF/JF Kreuzau <webmaster@localhost>")
+SERVER_EMAIL = DEFAULT_FROM_EMAIL
+ADMINS = [a for a in env("FV_ADMINS", "").split(",") if a]
+# Basis-Adresse für Links in E-Mails und Befehlen, z. B. https://foerderverein-kf-jf-kreuzau.de
+FV_BASIS_URL = env("FV_BASIS_URL", "http://127.0.0.1:8000").rstrip("/")
+PASSWORD_RESET_TIMEOUT = 7 * 24 * 3600  # Einladungs-/Passwortlinks: 7 Tage
+
 LOGGING = {
     "version": 1,
     "disable_existing_loggers": False,

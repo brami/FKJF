@@ -45,8 +45,10 @@ Tests: `python -m pytest`
 
 Das Skript `deploy/setup-server-fv-web.sh` richtet einen Debian-13-vServer per SSH ein
 und spielt die Anwendung ein (PostgreSQL, gunicorn, Caddy aus Debian; kein Docker).
-Es läuft auf dem eigenen Rechner im ausgecheckten Repository und überträgt den Code
-per `git archive` – auf dem Server werden keine Git-Zugangsdaten gebraucht.
+Es läuft auf dem eigenen Rechner und überträgt den Code per `git archive` – auf dem
+Server werden keine Git-Zugangsdaten gebraucht. Es kann im Repository liegen (dann
+wird der lokale Git-Stand installiert) oder allein irgendwo: Dann holt es den Stand
+selbst von GitHub (Standard: `main`; anderes Repository mit `-R`).
 
 ```sh
 # Nur prüfen (SSH, belegte Ports, DNS) – ändert nichts:
@@ -61,7 +63,7 @@ deploy/setup-server-fv-web.sh -H <server> -d foerderverein-kf-jf-kreuzau.de -U -
 ```
 
 Voraussetzung: Anmeldung als `root` per SSH-Schlüssel. Danach legt das Skript den
-Admin-Benutzer `juno` an und sperrt den root-Login. Alle Optionen: `-h`.
+Admin-Benutzer `fkjs` an und sperrt den root-Login. Alle Optionen: `-h`.
 
 Auf dem Server:
 

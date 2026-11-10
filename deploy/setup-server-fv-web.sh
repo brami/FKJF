@@ -2,8 +2,15 @@
 # =============================================================================
 #  setup-server-fv-web.sh – Einrichtung des Webservers des Fördervereins KF/JF Kreuzau
 #
-#  Läuft auf DEINEM Rechner (im ausgecheckten Repository) und richtet den
-#  vServer per SSH ein. Ziel: Debian 13 (trixie), Grundinstallation.
+#  Läuft auf DEINEM Rechner und richtet den vServer per SSH ein.
+#  Ziel: Debian 13 (trixie), Grundinstallation.
+#
+#  Zwei Arten des Aufrufs
+#    im Repository:  deploy/setup-server-fv-web.sh …   (nimmt den lokalen Git-Stand)
+#    eigenständig:   ./setup-server-fv-web.sh …        (Skript liegt allein irgendwo;
+#                    holt den Stand per git von GitHub, Standard: Branch main.
+#                    Nötig ist nur Lesezugriff auf das Repository, z. B. über
+#                    die eigenen GitHub-Zugangsdaten oder einen SSH-Schlüssel.)
 #  Reproduzierbar: Jeder Schritt prüft, ob er schon erledigt ist, und kann
 #  beliebig oft erneut ausgeführt werden.
 #
@@ -55,7 +62,7 @@
 set -Eeuo pipefail
 
 # ----------------------------- Voreinstellungen ------------------------------
-ADMIN_USER="juno"
+ADMIN_USER="fkjs"
 TIMEZONE="Europe/Berlin"
 SSH_PORT="22"
 NEW_HOSTNAME=""
@@ -64,7 +71,8 @@ DOMAIN=""
 WITH_WWW=0
 ACME_EMAIL=""
 BACKUP_REPO=""
-GIT_REF="HEAD"
+GIT_REF=""            # leer: HEAD (im Repository) bzw. main (eigenständig)
+REPO_URL="https://github.com/brami/FKJF.git"
 SKIP_HARDEN=0
 ASSUME_YES=0
 CHECK_ONLY=0
@@ -83,8 +91,11 @@ Pflicht:
 
 Anwendung:
   -r <ref>        Git-Stand, der installiert wird (Branch, Tag oder Commit).
-                  Standard: HEAD des lokalen Repositorys. Es wird nur
-                  eingecheckter Code übertragen.
+                  Im Repository Standard: HEAD (nur eingecheckter Code).
+                  Eigenständig Standard: main.
+  -R <url>        Repository, aus dem eigenständig geholt wird
+                  (Standard: $REPO_URL, per SSH z. B.
+                  git@github.com:brami/FKJF.git)
   -U              Nur die Anwendung installieren/aktualisieren (Grundeinrichtung
                   und SSH-Härtung überspringen; Server muss eingerichtet sein)
   -N              Keine Anwendung installieren (nur Server einrichten)
@@ -110,11 +121,12 @@ Optional:
 EOF
 }
 
-while getopts ":H:d:r:a:m:e:B:u:n:t:p:WUNcSyh" opt; do
+while getopts ":H:d:r:R:a:m:e:B:u:n:t:p:WUNcSyh" opt; do
   case "$opt" in
     H) SERVER="$OPTARG" ;;
     d) DOMAIN="$OPTARG" ;;
     r) GIT_REF="$OPTARG" ;;
+    R) REPO_URL="$OPTARG" ;;
     a) APP_ADMIN="$OPTARG" ;;
     m) APP_ADMIN_MAIL="$OPTARG" ;;
     e) ACME_EMAIL="$OPTARG" ;;
@@ -153,7 +165,13 @@ done
 
 # ----------------------------- Lokale Voraussetzungen ------------------------
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-REPO_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
+# Liegt das Skript im Repository (deploy/), wird der lokale Stand verwendet,
+# sonst wird das Repository in ein temporäres Verzeichnis geholt.
+REPO_DIR=""; STANDALONE=1
+if [[ -f "$SCRIPT_DIR/../manage.py" ]] && git -C "$SCRIPT_DIR/.." rev-parse --git-dir >/dev/null 2>&1; then
+  REPO_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"; STANDALONE=0
+fi
+[[ -n "$GIT_REF" ]] || { [[ $STANDALONE -eq 1 ]] && GIT_REF="main" || GIT_REF="HEAD"; }
 
 check_local_tools() {
   local missing=() t
@@ -173,10 +191,6 @@ check_local_tools() {
   if ! ssh-add -l >/dev/null 2>&1 && ! ls ~/.ssh/id_* >/dev/null 2>&1; then
     echo "WARNUNG: Kein SSH-Schlüssel gefunden (weder im ssh-agent noch unter ~/.ssh/id_*)." >&2
   fi
-  git -C "$REPO_DIR" rev-parse --git-dir >/dev/null 2>&1 \
-    || { echo "FEHLER: $REPO_DIR ist kein Git-Repository. Das Skript muss im Repository liegen." >&2; exit 2; }
-  [[ -f "$REPO_DIR/manage.py" && -f "$REPO_DIR/requirements.txt" ]] \
-    || { echo "FEHLER: $REPO_DIR enthält nicht die Anwendung (manage.py, requirements.txt)." >&2; exit 2; }
 }
 check_local_tools
 
@@ -200,15 +214,30 @@ MODE="Einrichtung"
 log "Start ($MODE)"
 log "Server: $SERVER | Domain: $DOMAIN$([[ $WITH_WWW -eq 1 ]] && echo " + www.$DOMAIN") | Admin: $ADMIN_USER | Zeitzone: $TIMEZONE | Hostname: ${NEW_HOSTNAME:-unverändert}"
 log "Lokales Protokoll: $LOCAL_LOG"
+if [[ $STANDALONE -eq 1 ]]; then log "Aufruf eigenständig – Code aus $REPO_URL ($GIT_REF)"
+else log "Aufruf im Repository $REPO_DIR ($GIT_REF)"; fi
 
 # ----------------------------- Git-Stand -------------------------------------
 APP_COMMIT=""; APP_DESC=""
+FETCH_DIR=""
+cleanup_fetch() { [[ -n "$FETCH_DIR" ]] && rm -rf "$FETCH_DIR"; return 0; }
+trap cleanup_fetch EXIT
+if [[ $NO_APP -eq 0 && $STANDALONE -eq 1 ]]; then
+  # Eigenständig: nur den gewünschten Stand holen (flach, ohne Verlauf)
+  FETCH_DIR="$(mktemp -d)"
+  log "Hole $GIT_REF aus $REPO_URL …"
+  git -C "$FETCH_DIR" init -q
+  if ! git -C "$FETCH_DIR" fetch -q --depth 1 "$REPO_URL" "$GIT_REF"; then
+    fail "Konnte $GIT_REF nicht aus $REPO_URL holen. Zugriff prüfen (privates Repository: GitHub-Anmeldung bzw. SSH-Schlüssel, -R git@github.com:brami/FKJF.git)."
+  fi
+  REPO_DIR="$FETCH_DIR"; GIT_REF="FETCH_HEAD"
+fi
 if [[ $NO_APP -eq 0 ]]; then
   APP_COMMIT="$(git -C "$REPO_DIR" rev-parse --verify --quiet "$GIT_REF^{commit}")" \
     || fail "Git-Stand '$GIT_REF' nicht gefunden (git fetch vergessen?)."
   APP_DESC="$(git -C "$REPO_DIR" log -1 --format='%h %s (%ad)' --date=short "$APP_COMMIT")"
   log "Anwendung: $APP_DESC"
-  if [[ "$GIT_REF" == HEAD && -n "$(git -C "$REPO_DIR" status --porcelain --untracked-files=no)" ]]; then
+  if [[ $STANDALONE -eq 0 && "$GIT_REF" == HEAD && -n "$(git -C "$REPO_DIR" status --porcelain --untracked-files=no)" ]]; then
     log "HINWEIS: Es gibt nicht eingecheckte Änderungen – übertragen wird nur der Stand des letzten Commits."
   fi
   for f in manage.py requirements.txt config/settings.py; do
@@ -975,5 +1004,5 @@ else
   log "HTTPS-Test https://$DOMAIN: noch nicht erreichbar (DNS/Zertifikat prüfen; Caddy versucht es automatisch erneut)."
 fi
 log "Fertig. Anmeldung künftig: ssh -p $SSH_PORT $ADMIN_USER@$SERVER"
-log "Neue Version einspielen: $0 -H $SERVER -d $DOMAIN -U -r main"
+log "Neue Version einspielen: $0 -H $SERVER -d $DOMAIN -U$([[ $STANDALONE -eq 0 ]] && echo ' -r main')"
 log "Lokales Protokoll: $LOCAL_LOG"

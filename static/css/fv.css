@@ -83,3 +83,14 @@ button.gefahr { background: #7a0c10 !important; }
 .diff .diff_chg { background: #fff3c4; }
 .diff .diff_sub { background: #fbd9d9; }
 .vorschau-alt { border: 1px dashed var(--linie); padding: 0 1rem 1rem; }
+
+/* Konto-Seiten (django-allauth) */
+.konto-seite form p, .konto-seite form > div { margin-bottom: .8rem; }
+.konto-seite label { display: block; font-weight: 600; }
+.konto-seite input[type=text], .konto-seite input[type=email], .konto-seite input[type=password] {
+  width: 100%; max-width: 22rem; padding: .4rem; font: inherit; }
+.konto-seite input[type=checkbox] + label, .konto-seite label:has(input[type=checkbox]) { display: inline; font-weight: normal; }
+.konto-seite button { background: var(--akzent); color: #fff; border: 0; padding: .5rem 1.2rem;
+                      font: inherit; cursor: pointer; margin-right: .5rem; }
+.konto-seite img { max-width: 220px; height: auto; }
+.konto-seite code, .konto-seite pre { background: var(--hell); padding: .1rem .3rem; }

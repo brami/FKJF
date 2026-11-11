@@ -89,8 +89,8 @@ def test_seite_und_anhang(client, seiten, art, max_stufe, stufe):
         assert 'filename="einladung.pdf"' in r_anhang["Content-Disposition"]
     elif u is None or not u.is_active:
         # Nicht angemeldet (deaktivierte Konten können sich nicht anmelden)
-        assert r_seite.status_code == 302 and "/anmelden/" in r_seite["Location"]
-        assert r_anhang.status_code == 302 and "/anmelden/" in r_anhang["Location"]
+        assert r_seite.status_code == 302 and "/konto/login/" in r_seite["Location"]
+        assert r_anhang.status_code == 302 and "/konto/login/" in r_anhang["Location"]
     else:
         # Angemeldet ohne Recht: 404, verrät nicht, dass es die Seite gibt
         assert r_seite.status_code == 404
@@ -157,14 +157,17 @@ def test_bearbeiten_nur_vorstand(art, erlaubt):
     assert rechte.darf_bearbeiten(benutzer(art)) == erlaubt
 
 
-@pytest.mark.parametrize("art,status", [
-    ("mitglied", 403),       # is_staff, aber nicht im Vorstand
-    ("vorstand", 200),
+@pytest.mark.parametrize("art,erlaubt", [
+    ("mitglied", False),     # auch mit is_staff kein Zugang
+    ("vorstand", True),      # Zugang auch ohne is_staff
 ])
-def test_verwaltung_nur_vorstand(client, art, status):
+def test_verwaltung_nur_vorstand(client, art, erlaubt):
     u = benutzer(art)
-    u.is_staff = True
+    u.is_staff = (art == "mitglied")
     u.save()
     client.force_login(u)
     r = client.get(reverse("admin:seiten_seite_changelist"))
-    assert r.status_code == status
+    if erlaubt:
+        assert r.status_code == 200
+    else:
+        assert r.status_code == 302 and "/login/" in r["Location"]

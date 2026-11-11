@@ -25,6 +25,9 @@ Tests: `python -m pytest`
   Bearbeitungsrechte entschieden wird
 - `seiten/models.py` – Seite und Anhang (mit Versionsverlauf, HTML-Bereinigung)
 - `seiten/views.py` – Startseite, Seitenansicht, Anhang-Download
+- `seiten/konto.py` – Anmeldung (django-allauth): keine Registrierung, Einladung per
+  Link, Pflicht zur Zwei-Faktor-Anmeldung für den Vorstand
+- `seiten/admin.py` – Benutzerverwaltung für den Vorstand (anlegen, einladen, Gruppen)
 - `seiten/bearbeiten.py` – Bearbeitung für den Vorstand: Seiten anlegen, ändern,
   löschen, Anhänge verwalten, Versionsverlauf mit Vergleich und Wiederherstellen
 - `static/vendor/tinymce/` – Editor TinyMCE 8 (GPL-2.0-or-later), nur benötigte Teile
@@ -40,6 +43,22 @@ Tests: `python -m pytest`
 | `FV_DB_NAME`, `FV_DB_USER`, … | PostgreSQL; ohne `FV_DB_NAME` wird SQLite verwendet |
 | `FV_PRIVATE_MEDIA_ROOT` | Ablage der Anhänge (außerhalb des Webverzeichnisses) |
 | `FV_ADMIN_PFAD` | Pfad der Verwaltung, Standard `verwaltung/` |
+
+## Anmeldung und Benutzer
+
+- Konten legt der Vorstand in der Verwaltung an (*Benutzer → Hinzufügen*): Name,
+  E-Mail-Adresse, Gruppe. Ein Passwort wird nicht vergeben; die Person erhält eine
+  **Einladung** mit einem Link (7 Tage gültig, einmal verwendbar) und setzt es selbst.
+  Ist der Mailversand noch nicht eingerichtet, zeigt die Verwaltung den Link an.
+- Anmelden mit Benutzername **oder** E-Mail-Adresse (jede Adresse nur einmal);
+  „Passwort vergessen?“ schickt einen neuen Link.
+- **Vorstand und Administratoren müssen die Zwei-Faktor-Anmeldung** (Authenticator-App)
+  einrichten; bis dahin führt jede Seite zur Einrichtung. Abschalten nur zum Testen:
+  `FV_ZWEI_FAKTOR_PFLICHT=0`.
+- Die Verwaltung meldet immer über die normale Anmeldeseite an – die Zwei-Faktor-Anmeldung
+  lässt sich dort nicht umgehen. Der Vorstand kann keine Administratorkonten sehen oder
+  ändern, niemanden zum Administrator machen und keine fremden Passwörter setzen.
+- Erstes Vorstandskonto auf dem Server: `sudo fv-manage vorstand_anlegen <name> <e-mail> --admin`
 
 ## Installation auf dem Server
 

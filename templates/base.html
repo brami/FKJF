@@ -17,13 +17,13 @@
       </a>
       <nav class="konto" aria-label="Benutzerkonto">
         {% if user.is_authenticated %}
-          <span>{{ user.get_full_name|default:user.username }}</span>
-          {% if user.is_staff %}<a href="{% url 'admin:index' %}">Verwaltung</a>{% endif %}
-          <form method="post" action="{% url 'logout' %}">{% csrf_token %}
+          <a href="{% url 'konto' %}">{{ user.get_full_name|default:user.username }}</a>
+          {% if fv_darf_bearbeiten %}<a href="{% url 'admin:index' %}">Verwaltung</a>{% endif %}
+          <form method="post" action="{% url 'account_logout' %}">{% csrf_token %}
             <button type="submit" class="link">Abmelden</button>
           </form>
         {% else %}
-          <a href="{% url 'login' %}">Anmelden</a>
+          <a href="{% url 'account_login' %}">Anmelden</a>
         {% endif %}
       </nav>
     </div>

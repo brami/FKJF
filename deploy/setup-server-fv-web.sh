@@ -969,6 +969,7 @@ installiere() {  # installiere <tar.gz> <commit> <beschreibung>
 
   step "Datenbank migrieren, statische Dateien"
   manage_in "$rel" migrate --noinput
+  manage_in "$rel" createcachetable
   manage_in "$rel" collectstatic --noinput --clear -v0
   log "Statische Dateien: $(find "$DATA/static" -type f | wc -l)"
 

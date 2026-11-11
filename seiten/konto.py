@@ -16,7 +16,7 @@ from django.contrib import messages
 from django.contrib.auth.backends import ModelBackend
 from django.contrib.auth.decorators import login_required
 from django.core.mail import send_mail
-from email.utils import formataddr, parseaddr
+from email.utils import parseaddr
 from django.shortcuts import redirect, render
 from django.template.loader import render_to_string
 from django.urls import reverse
@@ -33,10 +33,25 @@ def betreff(text: str) -> str:
     return f"[{webseite().name}] {text}"
 
 
+def mit_name(name: str, adresse: str) -> str:
+    """„Name <adresse>“ – Umlaute bleiben lesbar, Django kodiert beim Versand."""
+    name = " ".join(name.replace('"', "").split())
+    if not name:
+        return adresse
+    if any(z in name for z in '()<>@,;:\\.[]'):   # Sonderzeichen: Namen in Anführungszeichen
+        name = f'"{name}"'
+    return f"{name} <{adresse}>"
+
+
+def absender_adresse() -> str:
+    """Nur die Adresse aus FV_MAIL_ABSENDER."""
+    return parseaddr(settings.DEFAULT_FROM_EMAIL)[1]
+
+
 def absender() -> str:
     """Absender der E-Mails. Ohne Namen in FV_MAIL_ABSENDER wird der Name der Webseite ergänzt."""
     name, adresse = parseaddr(settings.DEFAULT_FROM_EMAIL)
-    return settings.DEFAULT_FROM_EMAIL if name else formataddr((webseite().name, adresse))
+    return settings.DEFAULT_FROM_EMAIL if name else mit_name(webseite().name, adresse)
 
 
 class KontoAdapter(DefaultAccountAdapter):

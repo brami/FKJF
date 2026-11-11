@@ -127,6 +127,11 @@ class Webseite(models.Model):
         max_length=100, default="Der Vorstand",
         help_text="Unter den E-Mails, z. B. der Einladung.",
     )
+    antwort_an = models.EmailField(
+        "Weitere Antwortadresse", blank=True,
+        help_text="Antworten auf einen Newsletter gehen an die versendende Person und an diese "
+                  "Adresse, z. B. die des Vorstands.",
+    )
 
     class Meta:
         verbose_name = "Einstellungen der Webseite"
@@ -343,3 +348,85 @@ def _stufe_gruppe_loeschen(sender, instance, **kwargs):
     """Wird eine Stufe gelöscht, verschwindet auch ihre Gruppe (und damit die Zuordnungen)."""
     if sender is Stufe and instance.gruppe_id:
         Group.objects.filter(pk=instance.gruppe_id).delete()
+
+
+class Versand(models.Model):
+    """Ein Newsletter: eine Seite, verschickt an ausgewählte Stufen."""
+
+    class Modus(models.TextChoices):
+        VOLLTEXT = "volltext", "Seite in der E-Mail"
+        LINK = "link", "Nur Vorschau und Link"
+
+    class Status(models.TextChoices):
+        LAEUFT = "laeuft", "läuft"
+        FERTIG = "fertig", "abgeschlossen"
+        ABGEBROCHEN = "abgebrochen", "abgebrochen"
+
+    seite = models.ForeignKey(Seite, on_delete=models.SET_NULL, null=True, related_name="versaende")
+    titel = models.CharField(max_length=200)   # bleibt, auch wenn die Seite gelöscht wird
+    absender = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True,
+                                 related_name="+")
+    modus = models.CharField(max_length=10, choices=Modus.choices, default=Modus.LINK)
+    ankuendigung = models.TextField("Ankündigung", blank=True)
+    mit_anhaengen = models.BooleanField("Anhänge mitsenden", default=False)
+    stufen = models.ManyToManyField(Stufe, blank=True, related_name="+")
+    ohne_stufe = models.BooleanField("Konten ohne Stufe", default=False)
+    status = models.CharField(max_length=12, choices=Status.choices, default=Status.LAEUFT)
+    erstellt = models.DateTimeField(auto_now_add=True)
+    weiter_ab = models.DateTimeField(null=True, blank=True)   # Pause nach der Probe / Abstand
+    beendet = models.DateTimeField(null=True, blank=True)
+    abgebrochen_von = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
+                                        null=True, blank=True, related_name="+")
+
+    class Meta:
+        verbose_name = "Newsletter-Versand"
+        verbose_name_plural = "Newsletter-Versände"
+        ordering = ["-erstellt"]
+
+    def __str__(self):
+        return f"{self.titel} ({self.erstellt:%d.%m.%Y %H:%M})"
+
+    def get_absolute_url(self):
+        return reverse("newsletter_status", args=[self.pk])
+
+    def zaehlung(self):
+        z = dict(self.empfaenge.values_list("status").annotate(n=models.Count("pk")))
+        return {s: z.get(s, 0) for s in Empfang.Status.values}
+
+    def in_pause(self, jetzt=None):
+        """Probe ist verschickt, die Pause läuft noch, an andere ging noch nichts."""
+        jetzt = jetzt or timezone.now()
+        return (self.status == self.Status.LAEUFT and self.weiter_ab is not None
+                and self.weiter_ab > jetzt
+                and self.empfaenge.filter(reihenfolge=0, zeit__isnull=False).exists()
+                and not self.empfaenge.filter(reihenfolge__gt=0, zeit__isnull=False).exists())
+
+
+class Empfang(models.Model):
+    """Ein Empfänger eines Versands (Reihenfolge 0 = Probe an die versendende Person)."""
+
+    class Status(models.TextChoices):
+        OFFEN = "offen", "wartet"
+        GESENDET = "gesendet", "gesendet"
+        FEHLER = "fehler", "Fehler"
+        OHNE_ADRESSE = "ohne", "keine E-Mail-Adresse"
+        NICHT_GESENDET = "nicht", "nicht gesendet (abgebrochen)"
+
+    versand = models.ForeignKey(Versand, on_delete=models.CASCADE, related_name="empfaenge")
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True,
+                             related_name="+")
+    name = models.CharField(max_length=200)
+    adresse = models.EmailField(blank=True)
+    stufe = models.CharField(max_length=60, blank=True)
+    reihenfolge = models.PositiveIntegerField()
+    status = models.CharField(max_length=10, choices=Status.choices, default=Status.OFFEN)
+    fehler = models.TextField(blank=True)
+    zeit = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        verbose_name = "Empfänger"
+        verbose_name_plural = "Empfänger"
+        ordering = ["reihenfolge", "pk"]
+
+    def __str__(self):
+        return f"{self.name} <{self.adresse}>"

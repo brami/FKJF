@@ -231,6 +231,11 @@ SERVER_EMAIL = DEFAULT_FROM_EMAIL
 ADMINS = [a for a in env("FV_ADMINS", "").split(",") if a]
 # Basis-Adresse für Links in E-Mails und Befehlen, z. B. https://foerderverein-kf-jf-kreuzau.de
 FV_BASIS_URL = env("FV_BASIS_URL", "http://127.0.0.1:8000").rstrip("/")
+
+# Newsletter (Versand durch den Dienst fv-web-newsletter: manage.py newsletter_dienst)
+FV_NEWSLETTER_PAUSE = int(env("FV_NEWSLETTER_PAUSE", "300"))        # Sekunden nach der Probe
+FV_NEWSLETTER_ABSTAND = float(env("FV_NEWSLETTER_ABSTAND", "3"))    # Sekunden zwischen Mails
+FV_NEWSLETTER_MAX_ANHANG_MB = int(env("FV_NEWSLETTER_MAX_ANHANG_MB", "8"))  # darüber nur Links
 PASSWORD_RESET_TIMEOUT = 7 * 24 * 3600  # Einladungs- und Passwort-Links: 7 Tage
 
 LOGGING = {

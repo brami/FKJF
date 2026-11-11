@@ -1,0 +1,21 @@
+{% autoescape off %}{% if versand.ankuendigung %}{{ versand.ankuendigung }}
+
+----------------------------------------------------------------------
+
+{% endif %}{{ seite.titel }}
+{{ seite.datum|date:"j. F Y" }}
+
+{% if versand.modus == "volltext" %}{{ inhalt_text }}{% else %}{{ seite.vorschau }}{% endif %}
+
+{% if versand.modus == "volltext" %}Auf der Webseite{% if bilder %} (mit Bildern){% endif %}{% else %}Weiterlesen{% endif %}: {{ link }}
+{% if angehaengt %}
+Angehängt: {% for a in angehaengt %}{{ a.dateiname }}{% if not forloop.last %}, {% endif %}{% endfor %}
+{% endif %}{% if anhaenge_links %}
+Anhänge{% if zu_gross %} (zu groß für die E-Mail){% endif %}:
+{% for a, url in anhaenge_links %}- {{ a }}: {{ url }}
+{% endfor %}{% endif %}
+-- 
+{{ web.name }}
+Sie erhalten diese E-Mail als registrierte Person der Webseite.
+Zustelladresse ändern: {{ konto_link }}
+{% endautoescape %}

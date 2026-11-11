@@ -17,6 +17,9 @@ python manage.py createsuperuser
 python manage.py runserver
 ```
 
+Newsletter in der Entwicklung verschicken: `python manage.py newsletter_dienst --einmal`
+(mit `FV_NEWSLETTER_PAUSE=0`, sonst wartet er die Pause nach der Probe ab).
+
 Tests: `python -m pytest`
 
 ## Aufbau
@@ -31,6 +34,8 @@ Tests: `python -m pytest`
   Stufenverwaltung für Administratoren
 - `seiten/bearbeiten.py` – Bearbeitung für den Vorstand: Seiten anlegen, ändern,
   löschen, Anhänge verwalten, Versionsverlauf mit Vergleich und Wiederherstellen
+- `seiten/newsletter.py` – Newsletter: Empfänger, E-Mail, Versandschritt, Oberfläche;
+  der Dienst ist `manage.py newsletter_dienst`
 - `static/vendor/tinymce/` – Editor TinyMCE 8 (GPL-2.0-or-later), nur benötigte Teile
 - `tests/` – Rechtematrix für alle Benutzerarten und Stufen
 
@@ -44,6 +49,9 @@ Tests: `python -m pytest`
 | `FV_DB_NAME`, `FV_DB_USER`, … | PostgreSQL; ohne `FV_DB_NAME` wird SQLite verwendet |
 | `FV_PRIVATE_MEDIA_ROOT` | Ablage der Anhänge (außerhalb des Webverzeichnisses) |
 | `FV_ADMIN_PFAD` | Pfad der Verwaltung, Standard `verwaltung/` |
+| `FV_NEWSLETTER_PAUSE` | Sekunden zwischen Probe und Versand an alle, Standard 300 |
+| `FV_NEWSLETTER_ABSTAND` | Sekunden zwischen zwei E-Mails, Standard 3 |
+| `FV_NEWSLETTER_MAX_ANHANG_MB` | Anhänge bis zu dieser Gesamtgröße gehen mit, darüber nur Links; Standard 8 |
 
 ## Name und Texte der Webseite
 
@@ -53,6 +61,33 @@ an …“) und die Unterschrift unter E-Mails pflegen Administratoren in der Ver
 E-Mails, als Absendername (wenn `FV_MAIL_ABSENDER` nur eine Adresse enthält) und in der
 Authenticator-App. Für den Förderverein übernimmt die Migration die bisherigen Texte.
 Im Quellcode steht damit nichts Vereinsspezifisches mehr.
+
+## Newsletter
+
+Auf jeder Seite gibt es für Bearbeitende „Als Newsletter versenden“. Beim Versand wird gewählt:
+
+- **An:** die Stufe der Seite und/oder höhere Stufen (bei öffentlichen Seiten auch Konten
+  ohne Stufe). Höhere Stufen erhalten die E-Mail zuerst.
+- **Inhalt:** die ganze Seite in der E-Mail oder nur Vorschau und Link (zum Lesen
+  geschützter Seiten ist dann eine Anmeldung nötig).
+- **Ankündigung:** optionaler kurzer Text über der Seite.
+- **Anhänge mitsenden:** Dateien (keine Bilder) bis `FV_NEWSLETTER_MAX_ANHANG_MB`
+  zusammen; sonst stehen Links in der E-Mail.
+
+Ablauf: Die Empfängerliste wird beim Start festgeschrieben. Der Dienst
+`fv-web-newsletter` schickt zuerst eine **Probe an die versendende Person**, wartet
+`FV_NEWSLETTER_PAUSE` Sekunden (vorzeitig fortsetzen möglich) und verschickt dann jede
+E-Mail **einzeln** im Abstand `FV_NEWSLETTER_ABSTAND` an die Zustelladresse, die jede
+Person unter *Mein Konto* gewählt hat. **Abbrechen** ist jederzeit möglich; vor jeder
+E-Mail wird neu geprüft. Das Protokoll (unter *Newsletter* in der Kopfzeile) zeigt je
+Empfänger gesendet, Fehler (mit Meldung), ohne E-Mail-Adresse oder nicht gesendet.
+Eine Seite kann beliebig oft verschickt werden.
+
+Absender ist die versendende Person: mit ihrer Vereinsadresse, falls vorhanden, sonst
+„Name (Name der Webseite)“ mit der Adresse aus `FV_MAIL_ABSENDER` – fremde Adressen wie
+gmail.com dürfen wir nicht als Absender eintragen, sonst landen die E-Mails im Spam.
+Antworten gehen an die Person und an die *weitere Antwortadresse* aus den
+Einstellungen der Webseite (z. B. die des Vorstands).
 
 ## Stufen
 

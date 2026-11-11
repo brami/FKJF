@@ -1,0 +1,29 @@
+<!DOCTYPE html>
+<html lang="de">
+<head><meta charset="utf-8"><title>{{ seite.titel }}</title></head>
+<body style="font-family: Arial, Helvetica, sans-serif; color: #222; line-height: 1.5; max-width: 40rem; margin: 0 auto; padding: 1rem;">
+  {% if versand.ankuendigung %}
+    <div style="background: #f5f5f5; border-left: 4px solid #b5121b; padding: .6rem 1rem; margin-bottom: 1.5rem;">{{ versand.ankuendigung|linebreaksbr }}</div>
+  {% endif %}
+  <p style="color: #666; font-size: .9rem; margin: 0;">{{ seite.datum|date:"j. F Y" }}</p>
+  <h1 style="font-size: 1.5rem; margin: .2rem 0 1rem;">{{ seite.titel }}</h1>
+  {% if versand.modus == "volltext" %}
+    <div>{{ inhalt|safe }}</div>
+    <p><a href="{{ link }}" style="color: #b5121b;">Auf der Webseite ansehen{% if bilder %} (mit Bildern){% endif %}</a></p>
+  {% else %}
+    <p>{{ seite.vorschau }}</p>
+    <p><a href="{{ link }}" style="display: inline-block; background: #b5121b; color: #fff; padding: .5rem 1rem; text-decoration: none; border-radius: 3px;">Weiterlesen</a></p>
+  {% endif %}
+  {% if angehaengt %}
+    <p>Angehängt: {% for a in angehaengt %}{{ a.dateiname }}{% if not forloop.last %}, {% endif %}{% endfor %}</p>
+  {% endif %}
+  {% if anhaenge_links %}
+    <p>Anhänge{% if zu_gross %} (zu groß für die E-Mail){% endif %}:</p>
+    <ul>{% for a, url in anhaenge_links %}<li><a href="{{ url }}" style="color: #b5121b;">{{ a }}</a></li>{% endfor %}</ul>
+  {% endif %}
+  <hr style="border: 0; border-top: 1px solid #ddd; margin-top: 2rem;">
+  <p style="color: #666; font-size: .85rem;">{{ web.name }}<br>
+    Sie erhalten diese E-Mail als registrierte Person der Webseite.
+    <a href="{{ konto_link }}" style="color: #666;">Zustelladresse ändern</a></p>
+</body>
+</html>

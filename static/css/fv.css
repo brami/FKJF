@@ -107,3 +107,7 @@ button.gefahr { background: #7a0c10 !important; }
 .vorschaubild img { display: block; width: 100%; aspect-ratio: 4 / 3; object-fit: cover; margin-top: 1rem; }
 @media (max-width: 40rem) { .vorschau.mit-bild { grid-template-columns: 1fr; } }
 img.mini { width: 3rem; height: 2.25rem; object-fit: cover; vertical-align: middle; margin-right: .5rem; }
+.formular label.normal { display: inline; font-weight: normal; }
+.formular input[type=checkbox], .formular input[type=radio] { width: auto; }
+.formular ul { list-style: none; padding-left: 0; margin: .2rem 0; }
+.formular ul label { font-weight: normal; }

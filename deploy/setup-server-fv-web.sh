@@ -413,7 +413,7 @@ phase_base() {
   apt-get update -q
   apt-get -y -q -o Dpkg::Options::=--force-confdef -o Dpkg::Options::=--force-confold full-upgrade
   apt_install ca-certificates curl sudo dbus ufw fail2ban python3-systemd \
-              unattended-upgrades apt-listchanges jq bind9-dnsutils rsync restic \
+              unattended-upgrades apt-listchanges jq bind9-dnsutils rsync restic git \
               python3 python3-venv postgresql caddy
   log "Python $(python3 -V | cut -d' ' -f2) | PostgreSQL $(runuser -u postgres -- psql -tAc 'SHOW server_version' | cut -d' ' -f1) | $(caddy version | cut -d' ' -f1)"
 
@@ -574,7 +574,7 @@ EOF
   step "Caddy"
   systemctl enable caddy >/dev/null
   systemctl restart caddy   # neue Gruppenzugehörigkeit übernehmen
-  if app_installed; then write_caddyfile app; else write_caddyfile platzhalter; fi
+  log "Caddyfile schreibt fv-web-update (nächste Phase)."
 
   step "Datensicherung"
   [[ -f "$BENV" ]] || { ( umask 077; echo "# Datensicherung – Einstellungen (nur root)" > "$BENV" ); }

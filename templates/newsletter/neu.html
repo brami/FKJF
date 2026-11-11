@@ -1,0 +1,64 @@
+{% extends "base.html" %}
+
+{% block titel %}Newsletter: {{ seite.titel }} – {{ fv_webseite.name }}{% endblock %}
+{% block robots %}<meta name="robots" content="noindex">{% endblock %}
+
+{% block inhalt %}
+  <p><a href="{{ seite.get_absolute_url }}">← Zurück zur Seite</a></p>
+  <h1>Als Newsletter versenden</h1>
+  <p>„{{ seite.titel }}“ (sichtbar für: {{ seite.stufe_name }})</p>
+
+  <form method="post" class="formular bearbeiten">{% csrf_token %}
+    {{ form.non_field_errors }}
+    <div class="feld">
+      <label>{{ form.stufen.label }}</label>
+      {{ form.stufen }}
+      {% if form.ohne_stufe %}<label class="normal">{{ form.ohne_stufe }} {{ form.ohne_stufe.label }}</label>{% endif %}
+      <p class="hilfe">Zur Verfügung stehen die Stufe der Seite und alle höheren.
+        Höhere Stufen erhalten die E-Mail zuerst.</p>
+    </div>
+    <div class="feld">
+      <label>{{ form.modus.label }}</label>
+      {{ form.modus }}
+      <p class="hilfe">„Seite in der E-Mail“: Der Text steht vollständig in der E-Mail und verlässt
+        damit den geschützten Bereich. „Nur Vorschau und Link“: Zum Lesen ist eine Anmeldung nötig
+        (bei nicht öffentlichen Seiten).</p>
+    </div>
+    <div class="feld breit">
+      <label for="{{ form.ankuendigung.id_for_label }}">{{ form.ankuendigung.label }}</label>
+      {{ form.ankuendigung }}
+      <p class="hilfe">{{ form.ankuendigung.help_text }}</p>
+    </div>
+    {% if form.mit_anhaengen %}
+      <div class="feld">
+        <label class="normal">{{ form.mit_anhaengen }} {{ form.mit_anhaengen.label }}</label>
+        <p class="hilfe">{{ form.mit_anhaengen.help_text }}</p>
+      </div>
+    {% endif %}
+
+    <p class="hinweis">
+      Ablauf: Zuerst erhalten <strong>Sie selbst</strong> die E-Mail
+      ({{ eigene_adresse|default:"keine Adresse hinterlegt!" }}). Danach folgt eine Pause von
+      {{ pause_min }} Minuten; in dieser Zeit können Sie den Versand prüfen und abbrechen oder
+      sofort fortsetzen. Dann geht jede E-Mail einzeln hinaus. Abbrechen ist jederzeit möglich.
+    </p>
+    <p class="hinweis">Bei Auswahl aller Stufen: {{ anzahl }} Empfänger{% if ohne_adresse %},
+      davon {{ ohne_adresse|length }} ohne E-Mail-Adresse{% endif %}.</p>
+    {% if ohne_adresse %}
+      <details><summary>Ohne E-Mail-Adresse (bitte anders benachrichtigen)</summary>
+        <ul>{% for u, s in ohne_adresse %}<li>{{ u.get_full_name|default:u.username }} ({{ s }})</li>{% endfor %}</ul>
+      </details>
+    {% endif %}
+    <div class="knoepfe"><button type="submit">Versand starten</button></div>
+  </form>
+
+  {% if frueher %}
+    <h2>Bisherige Versände dieser Seite</h2>
+    <ul>
+      {% for v in frueher %}
+        <li><a href="{{ v.get_absolute_url }}">{{ v.erstellt|date:"j.n.Y H:i" }}</a>
+          – {{ v.absender.get_full_name|default:v.absender.username|default:"–" }}, {{ v.get_status_display }}</li>
+      {% endfor %}
+    </ul>
+  {% endif %}
+{% endblock %}

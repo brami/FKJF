@@ -12,6 +12,7 @@
 #    PostgreSQL 17      Datenbank "fvweb", Anmeldung über den Unix-Socket (ohne Passwort)
 #    Python 3.13        Anwendung in einer virtuellen Umgebung je Version
 #    gunicorn           Dienst fv-web.service als Benutzer "fvweb"
+#    Newsletter         Dienst fv-web-newsletter.service (Versand im Hintergrund)
 #    Caddy              HTTPS mit automatischem Zertifikat, statische Dateien
 #    restic             tägliche, verschlüsselte Datensicherung
 #    fv-web-update      holt die Anwendung von GitHub und installiert sie –
@@ -565,6 +566,38 @@ ReadWritePaths=$DATA/private $DATA/mails
 [Install]
 WantedBy=multi-user.target
 EOF
+  cat > /etc/systemd/system/fv-web-newsletter.service <<EOF
+[Unit]
+Description=Newsletter-Versand der Webseite
+After=network.target postgresql.service fv-web.service
+Requires=postgresql.service
+# wird mit fv-web gestartet, gestoppt und neu gestartet
+PartOf=fv-web.service
+
+[Service]
+User=$SVC
+Group=$SVC
+WorkingDirectory=$BASE/current
+EnvironmentFile=$ENVF
+ExecStart=$BASE/current/.venv/bin/python manage.py newsletter_dienst
+UMask=0027
+Restart=always
+RestartSec=10
+NoNewPrivileges=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectSystem=strict
+ProtectHome=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+LockPersonality=true
+ReadWritePaths=$DATA/mails
+
+[Install]
+WantedBy=fv-web.service
+EOF
   cat > /usr/local/sbin/fv-manage <<EOF
 #!/usr/bin/env bash
 # Django-Befehle der Webseite ausführen, z. B.:  sudo fv-manage vorstand_anlegen …
@@ -574,8 +607,8 @@ exec runuser -u $SVC -- bash -c 'set -a; . $ENVF; set +a; cd $BASE/current; exec
 EOF
   chmod 750 /usr/local/sbin/fv-manage
   systemctl daemon-reload
-  app_installed && systemctl enable fv-web >/dev/null
-  log "Dienst fv-web eingerichtet; Befehle: sudo fv-manage <befehl>"
+  app_installed && systemctl enable fv-web fv-web-newsletter >/dev/null 2>&1
+  log "Dienste fv-web und fv-web-newsletter eingerichtet; Befehle: sudo fv-manage <befehl>"
 
   step "Caddy"
   systemctl enable caddy >/dev/null
@@ -919,7 +952,9 @@ aktiviere() {  # aktiviere <release-verzeichnis>
   ln -sfn "$1" "$BASE/current.neu" && mv -T "$BASE/current.neu" "$BASE/current"
   systemctl daemon-reload
   systemctl enable fv-web >/dev/null
+  systemctl enable fv-web-newsletter >/dev/null 2>&1 || true
   systemctl restart fv-web
+  systemctl restart fv-web-newsletter 2>/dev/null || true
 }
 
 pruefen() {
@@ -1147,7 +1182,7 @@ phase_summary() {
   . /etc/os-release
   log "System:       $PRETTY_NAME, Kernel $(uname -r), Hostname $(hostnamectl --static)"
   log "Admin:        $ADMIN_USER | Firewall: $(ufw status | head -n1) | fail2ban: $(systemctl is-active fail2ban)"
-  log "Dienste:      fv-web $(systemctl is-active fv-web 2>/dev/null || true) | caddy $(systemctl is-active caddy) | postgresql $(systemctl is-active postgresql)"
+  log "Dienste:      fv-web $(systemctl is-active fv-web 2>/dev/null || true) | newsletter $(systemctl is-active fv-web-newsletter 2>/dev/null || true) | caddy $(systemctl is-active caddy) | postgresql $(systemctl is-active postgresql)"
   if app_installed; then
     log "Anwendung:    $(grep '^Stand' "$BASE/current/.release" | cut -d: -f2- | xargs)"
     log "              Verwaltung: https://$DOMAIN/$(getkv "$ENVF" FV_ADMIN_PFAD)"

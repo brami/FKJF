@@ -1,0 +1,55 @@
+{% extends "base.html" %}
+
+{% block titel %}Newsletter-Versand: {{ v.titel }} – {{ fv_webseite.name }}{% endblock %}
+{% block robots %}<meta name="robots" content="noindex">{% if laeuft %}<meta http-equiv="refresh" content="5">{% endif %}{% endblock %}
+
+{% block inhalt %}
+  <p>{% if v.seite %}<a href="{{ v.seite.get_absolute_url }}">← Zurück zur Seite</a> · {% endif %}<a href="{% url 'newsletter_uebersicht' %}">Alle Versände</a></p>
+  <h1>Newsletter: {{ v.titel }}</h1>
+  <p class="meta">
+    <span>{{ v.erstellt|date:"j.n.Y H:i" }}</span>
+    <span>von {{ v.absender.get_full_name|default:v.absender.username|default:"–" }}</span>
+    <span>{{ v.get_modus_display }}{% if v.mit_anhaengen %}, mit Anhängen{% endif %}</span>
+  </p>
+
+  <p><strong>Status: {{ v.get_status_display }}</strong>
+    {% if v.status == "abgebrochen" and v.abgebrochen_von %} (von {{ v.abgebrochen_von.get_full_name|default:v.abgebrochen_von.username }}){% endif %}
+    – gesendet {{ zaehlung.gesendet }}, wartend {{ zaehlung.offen }}, Fehler {{ zaehlung.fehler }},
+    ohne Adresse {{ zaehlung.ohne }}{% if zaehlung.nicht %}, nicht gesendet {{ zaehlung.nicht }}{% endif %}</p>
+
+  {% if laeuft and not dienst %}
+    <p class="nachricht error">Der Versanddienst meldet sich nicht. Bitte die Betreuung informieren
+      (Dienst <code>fv-web-newsletter</code>).</p>
+  {% endif %}
+  {% if pause %}
+    <p class="nachricht">Die Probe ist an Sie verschickt. Bitte prüfen Sie die E-Mail. Der Versand an
+      alle beginnt am {{ v.weiter_ab|date:"j.n.Y" }} um {{ v.weiter_ab|date:"H:i:s" }} Uhr.</p>
+  {% endif %}
+
+  {% if laeuft %}
+    <div class="knoepfe">
+      {% if pause %}
+        <form method="post" action="{% url 'newsletter_fortsetzen' v.pk %}">{% csrf_token %}
+          <button type="submit">Probe ist in Ordnung – jetzt an alle senden</button></form>
+      {% endif %}
+      <form method="post" action="{% url 'newsletter_abbrechen' v.pk %}">{% csrf_token %}
+        <button type="submit" class="gefahr">Versand abbrechen</button></form>
+    </div>
+  {% endif %}
+
+  {% if v.ankuendigung %}<h2>Ankündigung</h2><p>{{ v.ankuendigung|linebreaksbr }}</p>{% endif %}
+
+  <h2>Empfänger</h2>
+  <table class="tabelle">
+    <thead><tr><th>Name</th><th>Stufe</th><th>Adresse</th><th>Status</th><th>Zeit</th></tr></thead>
+    <tbody>
+    {% for e in empfaenge %}
+      <tr>
+        <td>{{ e.name }}</td><td>{{ e.stufe }}</td><td>{{ e.adresse|default:"–" }}</td>
+        <td>{% if e.status == S.FEHLER %}<span class="fehler">Fehler</span><br><span class="hilfe">{{ e.fehler }}</span>{% elif e.status == S.OHNE_ADRESSE %}<span class="fehler">{{ e.get_status_display }}</span>{% else %}{{ e.get_status_display }}{% endif %}</td>
+        <td>{{ e.zeit|date:"H:i:s"|default:"" }}</td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+{% endblock %}

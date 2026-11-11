@@ -44,6 +44,7 @@
       <p class="aktionen">
         <a href="{% url 'seite_bearbeiten' seite.pk %}">Bearbeiten</a>
         · <a href="{% url 'seite_verlauf' seite.pk %}">Versionsverlauf</a>
+        · <a href="{% url 'newsletter_neu' seite.pk %}">Als Newsletter versenden</a>
         · <a href="{% url 'seite_loeschen' seite.pk %}">Löschen</a>
       </p>
     {% endif %}

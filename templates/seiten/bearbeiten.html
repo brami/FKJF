@@ -28,12 +28,14 @@
       {{ anhang_formset.non_form_errors }}
       {% if anhang_formset.forms %}
         <table class="tabelle">
-          <thead><tr><th>Datei</th><th>Bezeichnung (optional)</th><th>Entfernen</th></tr></thead>
+          <thead><tr><th>Datei</th><th>Bezeichnung / Bildunterschrift</th><th>Titelbild</th><th>Entfernen</th></tr></thead>
           <tbody>
           {% for f in anhang_formset %}
             <tr>
-              <td>{{ f.id }}<a href="{{ f.instance.get_absolute_url }}">{{ f.instance.dateiname }}</a></td>
+              <td>{{ f.id }}{% if f.instance.ist_bild %}<img class="mini" src="{{ f.instance.vorschau_url }}" alt="">{% endif %}
+                  <a href="{{ f.instance.get_absolute_url }}">{{ f.instance.dateiname }}</a></td>
               <td>{{ f.bezeichnung }} {{ f.bezeichnung.errors }}</td>
+              <td>{% if f.instance.ist_bild %}{{ f.titelbild }}{% else %}–{% endif %}</td>
               <td>{{ f.DELETE }}</td>
             </tr>
           {% endfor %}

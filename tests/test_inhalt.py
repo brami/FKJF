@@ -48,3 +48,8 @@ def test_geschuetzte_seite_noindex(client, django_user_model):
     u = django_user_model.objects.create_superuser("a", "a@example.org", "pw")
     client.force_login(u)
     assert 'content="noindex' in client.get(reverse("seite", args=[s.pk])).content.decode()
+
+
+def test_vorschau_trennt_absaetze():
+    s = Seite(titel="x", inhalt="<p>gestellt.</p><p>Vielen Dank</p><ul><li>eins</li><li>zwei</li></ul>")
+    assert s.vorschau() == "gestellt. Vielen Dank eins zwei"

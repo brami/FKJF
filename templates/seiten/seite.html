@@ -10,18 +10,35 @@
       {% if seite.stufe %}<span class="marke-stufe">{{ seite.get_stufe_display }}</span>{% endif %}
     </p>
     <h1>{{ seite.titel }}</h1>
+    {% with titelbild=seite.titelbild %}{% if titelbild %}
+      <figure class="aufmacher">
+        <a href="{{ titelbild.get_absolute_url }}"><img src="{{ titelbild.bild_url }}" alt="{{ titelbild.bezeichnung|default:seite.titel }}"></a>
+        {% if titelbild.bezeichnung %}<figcaption>{{ titelbild.bezeichnung }}</figcaption>{% endif %}
+      </figure>
+    {% endif %}{% endwith %}
     <div class="text">{{ seite.inhalt|safe }}</div>
 
-    {% if anhaenge %}
+    {% with galerie=seite.galerie %}{% if galerie %}
+      <section class="galerie" aria-label="Bilder">
+        {% for b in galerie %}
+          <figure>
+            <a href="{{ b.get_absolute_url }}"><img src="{{ b.vorschau_url }}" alt="{{ b.bezeichnung|default:'Bild' }}" loading="lazy"></a>
+            {% if b.bezeichnung %}<figcaption>{{ b.bezeichnung }}</figcaption>{% endif %}
+          </figure>
+        {% endfor %}
+      </section>
+    {% endif %}{% endwith %}
+
+    {% with dateien=seite.dateien %}{% if dateien %}
       <section class="anhaenge">
         <h2>Anhänge</h2>
         <ul>
-          {% for a in anhaenge %}
+          {% for a in dateien %}
             <li><a href="{{ a.get_absolute_url }}">{{ a }}</a></li>
           {% endfor %}
         </ul>
       </section>
-    {% endif %}
+    {% endif %}{% endwith %}
 
     {% if darf_bearbeiten %}
       <p class="aktionen">

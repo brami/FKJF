@@ -25,6 +25,7 @@ urlpatterns = [
     path("", views.startseite, name="startseite"),
     path("seite/<int:pk>/", views.seite, name="seite"),
     path("anhang/<int:pk>/", views.anhang, name="anhang"),
+    path("anhang/<int:pk>/<slug:variante>/", views.anhang_variante, name="anhang_variante"),
     path("seite/neu/", bearbeiten.seite_bearbeiten, name="seite_neu"),
     path("seite/<int:pk>/bearbeiten/", bearbeiten.seite_bearbeiten, name="seite_bearbeiten"),
     path("seite/<int:pk>/loeschen/", bearbeiten.seite_loeschen, name="seite_loeschen"),

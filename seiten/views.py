@@ -39,18 +39,38 @@ def seite(request, pk):
     })
 
 
-@require_GET
-def anhang(request, pk):
+def _ausliefern(request, pk, feld):
     a = get_object_or_404(Anhang.objects.select_related("seite"), pk=pk)
     if not rechte.darf_lesen(request.user, a.seite):
         return _verweigert(request)
+    datei = getattr(a, feld)
+    if not datei:
+        raise Http404
     try:
-        datei = a.datei.open("rb")
+        fh = datei.open("rb")
     except FileNotFoundError:
         raise Http404
-    antwort = FileResponse(datei, as_attachment=True, filename=a.dateiname)
-    antwort["Cache-Control"] = "private, no-store"
+    if a.ist_bild:
+        # Bilder im Browser anzeigen; zwischenspeichern nur im eigenen Browser
+        antwort = FileResponse(fh, as_attachment=False, filename=a.dateiname)
+        antwort["Cache-Control"] = "private, max-age=3600"
+    else:
+        antwort = FileResponse(fh, as_attachment=True, filename=a.dateiname)
+        antwort["Cache-Control"] = "private, no-store"
     return antwort
+
+
+@require_GET
+def anhang(request, pk):
+    return _ausliefern(request, pk, "datei")
+
+
+@require_GET
+def anhang_variante(request, pk, variante):
+    feld = {"bild": "bild", "vorschau": "vorschaubild"}.get(variante)
+    if feld is None:
+        raise Http404
+    return _ausliefern(request, pk, feld)
 
 
 @require_GET

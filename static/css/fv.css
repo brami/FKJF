@@ -94,3 +94,16 @@ button.gefahr { background: #7a0c10 !important; }
                       font: inherit; cursor: pointer; margin-right: .5rem; }
 .konto-seite img { max-width: 220px; height: auto; }
 .konto-seite code, .konto-seite pre { background: var(--hell); padding: .1rem .3rem; }
+
+/* Bilder: Aufmacher, Galerie, Vorschaubilder */
+.aufmacher { margin: 1rem 0 1.5rem; }
+.aufmacher img { display: block; width: 100%; height: auto; max-height: 34rem; object-fit: cover; }
+.aufmacher figcaption, .galerie figcaption { color: var(--grau); font-size: .88rem; margin-top: .3rem; }
+.galerie { display: grid; grid-template-columns: repeat(auto-fill, minmax(11rem, 1fr));
+           gap: .8rem; margin: 2rem 0 1rem; }
+.galerie figure { margin: 0; }
+.galerie img { display: block; width: 100%; aspect-ratio: 4 / 3; object-fit: cover; }
+.vorschau.mit-bild { display: grid; grid-template-columns: 12rem 1fr; gap: 1.2rem; align-items: start; }
+.vorschaubild img { display: block; width: 100%; aspect-ratio: 4 / 3; object-fit: cover; margin-top: 1rem; }
+@media (max-width: 40rem) { .vorschau.mit-bild { grid-template-columns: 1fr; } }
+img.mini { width: 3rem; height: 2.25rem; object-fit: cover; vertical-align: middle; margin-right: .5rem; }

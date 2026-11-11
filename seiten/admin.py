@@ -48,7 +48,7 @@ class NurVorstand:
 class AnhangInline(NurVorstand, admin.TabularInline):
     model = Anhang
     extra = 1
-    fields = ("datei", "bezeichnung", "dateiname")
+    fields = ("datei", "bezeichnung", "titelbild", "dateiname")
     readonly_fields = ("dateiname",)
 
 

@@ -1,3 +1,4 @@
+import re
 from pathlib import Path
 from uuid import uuid4
 
@@ -13,6 +14,7 @@ from django.utils.html import strip_tags
 from django.utils.text import Truncator
 from simple_history.models import HistoricalRecords
 
+from .bilder import fassungen, ist_bildname, pruefe_bild
 from .stufen import Stufe
 
 # Erlaubte HTML-Elemente im Seiteninhalt; alles andere entfernt nh3.
@@ -76,7 +78,25 @@ class Seite(models.Model):
         return reverse("seite", args=[self.pk])
 
     def vorschau(self, woerter=40):
-        return Truncator(strip_tags(self.inhalt)).words(woerter, truncate=" …")
+        # Absätze, Listenpunkte usw. durch Leerzeichen trennen, damit Wörter nicht zusammenkleben
+        text = re.sub(r"<(/(p|h[1-6]|li|td|th|blockquote)|br\s*/?)>", " ", self.inhalt or "")
+        return Truncator(" ".join(strip_tags(text).split())).words(woerter, truncate=" …")
+
+    # Anhänge aufgeteilt: Bilder (Titelbild zuerst) und übrige Dateien.
+    # Arbeiten mit .all(), damit prefetch_related("anhaenge") genutzt wird.
+    def bilder(self):
+        bilder = [a for a in self.anhaenge.all() if a.ist_bild]
+        return sorted(bilder, key=lambda a: (not a.titelbild, a.pk))
+
+    def titelbild(self):
+        bilder = self.bilder()
+        return bilder[0] if bilder else None
+
+    def galerie(self):
+        return self.bilder()[1:]
+
+    def dateien(self):
+        return [a for a in self.anhaenge.all() if not a.ist_bild]
 
 
 def anhang_pfad(instance, filename):
@@ -102,10 +122,21 @@ class Anhang(models.Model):
         validators=[
             FileExtensionValidator(allowed_extensions=settings.ANHANG_ENDUNGEN),
             pruefe_groesse,
+            pruefe_bild,
         ],
     )
     dateiname = models.CharField(max_length=255, editable=False)
     bezeichnung = models.CharField(max_length=200, blank=True)
+    # Bilder: verkleinerte Fassungen, beim Hochladen erzeugt (ohne Metadaten)
+    ist_bild = models.BooleanField(default=False, editable=False)
+    titelbild = models.BooleanField(
+        "Titelbild", default=False,
+        help_text="Erscheint oben auf der Seite und als Vorschau auf der Startseite. "
+                  "Ohne Auswahl ist es das erste Bild.",
+    )
+    bild = models.FileField(storage=private_storage, upload_to=anhang_pfad, blank=True, editable=False)
+    vorschaubild = models.FileField(storage=private_storage, upload_to=anhang_pfad, blank=True,
+                                    editable=False)
     hochgeladen = models.DateTimeField(auto_now_add=True)
 
     history = HistoricalRecords(verbose_name="Fassung")
@@ -118,12 +149,32 @@ class Anhang(models.Model):
     def __str__(self):
         return self.bezeichnung or self.dateiname
 
+    def save(self, *args, **kwargs):
+        # Neu hochgeladenes Bild: ohne Metadaten neu schreiben und verkleinern
+        if self.datei and not self.datei._committed and ist_bildname(self.datei.name):
+            original = self.datei.name
+            f = fassungen(self.datei.file, original)
+            self.dateiname = Path(original).stem[:240] + Path(f["datei"].name).suffix
+            self.datei = f["datei"]
+            self.bild = f["bild"]
+            self.vorschaubild = f["vorschau"]
+            self.ist_bild = True
+        super().save(*args, **kwargs)
+
     def get_absolute_url(self):
         return reverse("anhang", args=[self.pk])
+
+    def bild_url(self):
+        return reverse("anhang_variante", args=[self.pk, "bild"])
+
+    def vorschau_url(self):
+        return reverse("anhang_variante", args=[self.pk, "vorschau"])
 
 
 @models.signals.post_delete.connect
 def _anhang_datei_loeschen(sender, instance, **kwargs):
     """Beim Löschen eines Anhangs (auch über das Löschen der Seite) die Datei entfernen."""
-    if sender is Anhang and instance.datei:
-        instance.datei.delete(save=False)
+    if sender is Anhang:
+        for feld in (instance.datei, instance.bild, instance.vorschaubild):
+            if feld:
+                feld.delete(save=False)

@@ -3,15 +3,20 @@
 {% block inhalt %}
   {% if darf_bearbeiten %}<p class="aktionen oben"><a class="knopf" href="{% url 'seite_neu' %}">+ Neue Seite</a></p>{% endif %}
   {% for s in seiten %}
-    <article class="vorschau">
+    <article class="vorschau{% if s.titelbild %} mit-bild{% endif %}">
+      {% with tb=s.titelbild %}{% if tb %}
+        <a class="vorschaubild" href="{{ s.get_absolute_url }}" tabindex="-1" aria-hidden="true"><img src="{{ tb.vorschau_url }}" alt="" loading="lazy"></a>
+      {% endif %}{% endwith %}
+      <div class="vorschau-text">
       <p class="meta">
         <time datetime="{{ s.datum|date:'Y-m-d' }}">{{ s.datum|date:"j. F Y" }}</time>
         {% if s.stufe %}<span class="marke-stufe">{{ s.get_stufe_display }}</span>{% endif %}
       </p>
       <h2><a href="{{ s.get_absolute_url }}">{{ s.titel }}</a></h2>
       <p>{{ s.vorschau }}</p>
-      {% if s.anhaenge.all %}<p class="hinweis">{{ s.anhaenge.all|length }} Anhang/Anhänge</p>{% endif %}
+      {% with n=s.dateien|length %}{% if n %}<p class="hinweis">{{ n }} Anhang/Anhänge</p>{% endif %}{% endwith %}
       <p><a href="{{ s.get_absolute_url }}">Weiterlesen</a></p>
+      </div>
     </article>
   {% empty %}
     <p>Es gibt noch keine Seiten.</p>

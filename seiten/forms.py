@@ -1,5 +1,5 @@
 from django import forms
-from django.forms import inlineformset_factory
+from django.forms import BaseInlineFormSet, inlineformset_factory
 
 from .models import Anhang, Seite
 
@@ -31,8 +31,10 @@ class MehrereDateienFeld(forms.FileField):
 
 class NeueAnhaengeForm(forms.Form):
     dateien = MehrereDateienFeld(
-        label="Dateien hinzufügen", required=False,
-        help_text="Mehrere Dateien auf einmal möglich, je Datei höchstens 20 MB.",
+        label="Dateien und Bilder hinzufügen", required=False,
+        help_text="Mehrere auf einmal möglich, je Datei höchstens 20 MB. Bilder (JPG, PNG, WebP) "
+                  "erscheinen auf der Seite: das erste bzw. ausgewählte als Titelbild, weitere "
+                  "als Galerie. Standortdaten in Fotos werden automatisch entfernt.",
     )
 
     def __init__(self, *args, seite=None, **kwargs):
@@ -57,7 +59,26 @@ class NeueAnhaengeForm(forms.Form):
         return dateien
 
 
+class AnhangForm(forms.ModelForm):
+    class Meta:
+        model = Anhang
+        fields = ["bezeichnung", "titelbild"]
+        labels = {"bezeichnung": "Bezeichnung / Bildunterschrift"}
+
+    def clean_titelbild(self):
+        # Nur Bilder können Titelbild sein
+        return self.cleaned_data.get("titelbild") and self.instance.ist_bild
+
+
+class BaseAnhangFormSet(BaseInlineFormSet):
+    def clean(self):
+        super().clean()
+        gewaehlt = [f for f in self.forms
+                    if f.cleaned_data.get("titelbild") and not f.cleaned_data.get("DELETE")]
+        if len(gewaehlt) > 1:
+            raise forms.ValidationError("Bitte nur ein Bild als Titelbild auswählen.")
+
+
 AnhangFormSet = inlineformset_factory(
-    Seite, Anhang, fields=["bezeichnung"], extra=0, can_delete=True,
-    labels={"bezeichnung": "Bezeichnung"},
+    Seite, Anhang, form=AnhangForm, formset=BaseAnhangFormSet, extra=0, can_delete=True,
 )

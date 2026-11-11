@@ -1,0 +1,597 @@
+% =====================================================================
+%  Webseite Förderverein KF/JF Kreuzau -- Betriebshandbuch für die Betreuung
+%  Vorlage: deb-support (debsupport.sty, siehe latex/README.md), Vereinskopf
+%  Grundlage: deploy/setup-server-fv-web.sh, README.md (Stand siehe Titel)
+%  Übersetzen mit:  pdflatex betriebshandbuch_webseite.tex  (3x)
+% =====================================================================
+\documentclass[a4paper,fontsize=10pt]{scrartcl}
+\usepackage[bericht]{debsupport}
+\tcbuselibrary{listings}
+\usepackage{tikz}
+\usetikzlibrary{positioning,arrows.meta,fit,backgrounds}
+\setcounter{tocdepth}{2}
+
+% Vereinskopf statt deb-support (Vorlage bleibt, nur die Absenderdaten wechseln)
+\dssetup{firma=Förderverein KF/JF Kreuzau}
+\makeatletter
+\renewcommand*{\ds@kopf}{%
+  \put(24.5,279.4){\makebox(0,0)[lb]{\dslogo[20]}}%
+  \put(195.6,276.3){\makebox(0,0)[rb]{{\dsserif\fontsize{12}{14.45}\selectfont
+     \begin{tabular}[b]{@{}r@{}}Kinder- und Jugendfeuerwehr\\Kreuzau\\
+     foerderverein-kf-jf-kreuzau.de\end{tabular}}}}%
+  \put(17.8,271.85){\rule{179.8mm}{0.4pt}}}
+\renewcommand*{\dsfolgekopf}[1]{%
+  \parbox[b]{\textwidth}{\dslogo[11]\hfill #1\\[-0.4ex]%
+    \rule{\textwidth}{0.4pt}}}
+\makeatother
+\renewcommand*{\dsdokumentart}{Betriebshandbuch}
+\renewcommand*{\dskurztitel}{Webseite -- Betriebshandbuch}
+\renewcommand*{\dsbeleg}{}
+\setlength{\emergencystretch}{3em}
+
+% Befehle: grau hinterlegt, Umlaute erlaubt
+\newtcblisting{befehl}{listing only, breakable, enhanced, colback=dshell,
+  boxrule=0pt, arc=0pt, left=2mm, right=2mm, top=1mm, bottom=1mm,
+  listing options={basicstyle=\small\ttfamily, breaklines=true, columns=fullflexible,
+    keepspaces=true, upquote=true,
+    literate={ä}{{\"a}}1 {ö}{{\"o}}1 {ü}{{\"u}}1 {Ä}{{\"A}}1 {Ö}{{\"O}}1
+             {Ü}{{\"U}}1 {ß}{{\ss}}1 {–}{{--}}1 {…}{{\dots}}1 {→}{{$\rightarrow$}}1}}
+\newcommand*{\cmd}[1]{\texttt{#1}}
+\newcommand*{\pfad}[1]{\texttt{#1}}
+
+\begin{document}
+
+\dstitel{Betriebshandbuch der Webseite}
+        {Für die Betreuung: Server einrichten, Updates, Einstellungen, Datensicherung,
+         Störungen, Wartung}
+        {Webseite: & \url{https://foerderverein-kf-jf-kreuzau.de}\\
+         Quellcode: & \url{https://github.com/brami/FKJF}\\
+         Server:   & vServer mit Debian 13, Admin-Benutzer \cmd{fkjs}\\
+         Stand:    & \today}
+
+\begin{dshinweis}[title={Die wichtigsten Befehle (auf dem Server, als fkjs)}]
+\begin{tabularx}{\linewidth}{@{}>{\ttfamily}lX@{}}
+sudo fv-web-update            & neue Version von GitHub (\cmd{main}) installieren \\
+sudo fv-web-update -{}-zurueck & vorige Version wieder aktivieren \\
+sudo fv-web-update -{}-status  & installierte Versionen anzeigen \\
+sudo fv-web-backup            & Datensicherung sofort ausführen \\
+sudo fv-web-restore -t        & Wiederherstellungstest (ändert nichts) \\
+sudo fv-manage <befehl>       & Befehle der Anwendung (siehe Abschnitt~\ref{sec:verwaltung}) \\
+systemctl status fv-web       & läuft die Webseite? \\
+journalctl -u fv-web -e       & Protokoll der Webseite \\
+\end{tabularx}
+\end{dshinweis}
+
+\tableofcontents
+
+% ==================================================================
+\section{Überblick}
+
+\subsection{Aufbau}
+
+Die Webseite ist eine eigene Anwendung auf Basis von Django. Sie läuft allein auf
+einem vServer, ausschließlich mit Paketen aus Debian (kein Docker). Den Quellcode
+holt der Server selbst von GitHub.
+
+\begin{figure}[h]
+\centering
+\begin{tikzpicture}[font=\small,
+    box/.style={draw, rounded corners=3pt, align=center, minimum height=1cm,
+                text width=3.1cm, fill=white},
+    daten/.style={draw, align=center, text width=3.1cm, minimum height=0.9cm, fill=dshell},
+    pf/.style={-{Stealth[length=2.3mm]}, thick}, lbl/.style={font=\footnotesize}]
+  \node[box] (browser) {\textbf{Besucher}\\Browser};
+  \node[box, right=1.1cm of browser] (caddy) {\textbf{Caddy}\\HTTPS, Zertifikat,\\statische Dateien};
+  \node[box, right=1.1cm of caddy, draw=dsrot, very thick] (app) {\textbf{fv-web}\\gunicorn + Django};
+  \node[daten, below=0.9cm of app] (db) {\textbf{PostgreSQL 17}\\Datenbank fvweb};
+  \node[daten, below=0.9cm of caddy] (files) {\textbf{Anhänge}\\/var/lib/fv-web/private};
+  \node[box, right=1.1cm of db] (nl) {\textbf{fv-web-newsletter}\\Versanddienst};
+  \node[box, above=0.9cm of nl] (smtp) {\textbf{Mailserver}\\(SMTP)};
+  \node[box, below=0.9cm of files] (backup) {\textbf{fv-web-backup}\\täglich 03:30 (restic)};
+  \node[daten, left=1.1cm of backup] (ziel) {\textbf{Backup-Ziel}\\lokal oder extern};
+  \draw[pf, <->] (browser) -- (caddy);
+  \draw[pf, <->] (caddy) -- node[lbl, above]{Socket} (app);
+  \draw[pf, <->] (app) -- (db);
+  \draw[pf, <->] (app) -- (files);
+  \draw[pf] (nl) -- (db);
+  \draw[pf] (nl) -- (smtp);
+  \draw[pf] (app) -- (smtp);
+  \draw[pf] (db) |- (backup);
+  \draw[pf] (files) -- (backup);
+  \draw[pf] (backup) -- (ziel);
+\end{tikzpicture}
+\caption{Bestandteile auf dem Server}
+\end{figure}
+
+\subsection{Dienste}
+
+\begin{center}
+\small
+\begin{tabularx}{\textwidth}{@{}>{\ttfamily}lX@{}}
+\toprule
+\textbf{\sffamily Dienst} & \textbf{Aufgabe} \\
+\midrule
+fv-web.service            & die Webseite (gunicorn, 3 Prozesse, Socket \pfad{/run/fv-web/gunicorn.sock}) \\
+fv-web-newsletter.service & verschickt Newsletter; startet, stoppt und startet neu zusammen mit fv-web \\
+caddy.service             & HTTPS, Zertifikat von Let's Encrypt (automatisch), statische Dateien \\
+postgresql.service        & Datenbank \\
+fv-web-backup.timer       & tägliche Sicherung gegen 03:30 \\
+unattended-upgrades       & automatische Sicherheitsupdates von Debian \\
+fail2ban, ufw             & Schutz für SSH, Firewall (offen: SSH, 80, 443) \\
+\bottomrule
+\end{tabularx}
+\end{center}
+
+\subsection{Verzeichnisse und Dateien}
+
+\begin{center}
+\small
+\begin{tabularx}{\textwidth}{@{}>{\ttfamily}lX@{}}
+\toprule
+\textbf{\sffamily Pfad} & \textbf{Inhalt} \\
+\midrule
+/srv/fv-web/releases/      & installierte Versionen (die letzten drei) \\
+/srv/fv-web/current        & Verweis auf die aktive Version \\
+/etc/fv-web/env            & Einstellungen der Anwendung (Abschnitt~\ref{sec:einstellungen}) \\
+/etc/fv-web/deploy.env     & Repository, Standard-Branch, Domain (nur root) \\
+/etc/fv-web/backup.env     & Datensicherung inkl. \textbf{Passwort} (nur root) \\
+/var/lib/fv-web/private    & Anhänge und Bilder (nur für die Anwendung lesbar) \\
+/var/lib/fv-web/static     & CSS, JavaScript, Editor (liefert Caddy aus) \\
+/var/lib/fv-web/mails      & E-Mails als Dateien, solange kein Mailserver eingetragen ist \\
+/var/backups/fv-web        & Datenbank-Dumps der letzten 7 Tage \\
+/var/log/fv-web-update.log & Protokoll aller Updates \\
+/var/log/caddy/fv-web.log  & Zugriffe auf die Webseite \\
+/etc/caddy/Caddyfile       & wird von \cmd{fv-web-update} geschrieben -- nicht von Hand ändern \\
+\bottomrule
+\end{tabularx}
+\end{center}
+
+\subsection{Konten}
+
+\begin{description}[style=nextline,leftmargin=0pt,itemsep=0.3\baselineskip]
+  \item[\cmd{fkjs} (Linux)] Admin-Benutzer des Servers; Anmeldung nur per SSH-Schlüssel,
+    \cmd{sudo} ohne Passwort. Anmeldung als root und mit Passwort ist abgeschaltet.
+  \item[\cmd{fvweb} (Linux und PostgreSQL)] Dienstbenutzer der Anwendung; Datenbankzugriff
+    nur lokal über den Socket, ohne Passwort.
+  \item[\cmd{dovecot} (PostgreSQL)] für den späteren Mailserver; darf nur die Sicht
+    \cmd{dovecot\_benutzer} lesen (Vereinsadressen und Passwort-Hashes).
+  \item[Administrator der Webseite] Konto der Webseite mit vollen Rechten
+    (\emph{Superuser}); sieht zusätzlich \emph{Stufen} und \emph{Einstellungen der
+    Webseite}. Anlegen siehe Abschnitt~\ref{sec:verwaltung}.
+\end{description}
+
+% ==================================================================
+\section{Server einrichten}\label{sec:einrichten}
+
+Das Skript \pfad{deploy/setup-server-fv-web.sh} läuft auf dem eigenen Rechner und
+richtet den Server per SSH ein. Es kann beliebig oft erneut laufen; jeder Schritt
+prüft, ob er schon erledigt ist. \cmd{-h} zeigt alle Optionen.
+
+\subsection{Voraussetzungen}
+
+\begin{itemize}
+  \item vServer mit frischem Debian 13, Anmeldung als root mit SSH-Schlüssel.
+  \item DNS: A-Eintrag (und ggf.\ AAAA) der Domain zeigt auf den Server; für
+        \cmd{-W} auch \cmd{www}.
+  \item Auf dem eigenen Rechner: \cmd{bash}, \cmd{ssh}; das Skript allein genügt
+        (das Repository ist nur für \cmd{-L} nötig).
+\end{itemize}
+
+\subsection{Ablauf}
+
+\begin{enumerate}
+  \item \textbf{Nur prüfen} (ändert nichts): SSH, belegte Ports 80/443, DNS.
+\begin{befehl}
+./setup-server-fv-web.sh -H 203.0.113.10 -d foerderverein-kf-jf-kreuzau.de -W -c
+\end{befehl}
+  \item \textbf{Erstinstallation} mit Administrator-Konto der Webseite und externem
+        Backup-Ziel:
+\begin{befehl}
+./setup-server-fv-web.sh -H 203.0.113.10 -d foerderverein-kf-jf-kreuzau.de -W \
+    -n fv-web -a michael.bramer -m adresse@example.org \
+    -B sftp://u12345@u12345.your-storagebox.de:23/fv-web
+\end{befehl}
+        Das Skript aktualisiert das System, legt \cmd{fkjs} an (übernimmt die
+        SSH-Schlüssel von root), richtet Firewall, fail2ban, PostgreSQL, Caddy,
+        Dienste und Sicherung ein, testet die Anmeldung als \cmd{fkjs} und härtet erst
+        danach SSH. Dann holt der Server die Anwendung von GitHub und installiert sie.
+  \item \textbf{Ausgaben beachten:}
+    \begin{itemize}
+      \item den \textbf{Link zum Setzen des Passworts} für das Administrator-Konto
+            (7 Tage gültig),
+      \item den \textbf{öffentlichen Backup-Schlüssel}: bei der Storage-Box als
+            erlaubten Schlüssel eintragen, sonst schlägt die Sicherung fehl,
+      \item bei privatem Repository den \textbf{Deploy-Schlüssel}: bei GitHub unter
+            \emph{Settings $\rightarrow$ Deploy keys} eintragen (ohne Schreibrecht),
+            dann erneut mit \cmd{-U} aufrufen.
+    \end{itemize}
+  \item \textbf{Passwort der Datensicherung sichern} -- siehe Hinweis in
+        Abschnitt~\ref{sec:sicherung}.
+  \item Mit dem Link Passwort setzen, anmelden, Zwei-Faktor-Anmeldung einrichten.
+  \item In der Verwaltung unter \emph{Einstellungen der Webseite} die \emph{Weitere
+        Antwortadresse} (Vorstand) eintragen; \emph{Stufen} prüfen.
+  \item Vorstandsmitglieder in der Verwaltung anlegen und einladen (siehe
+        Vorstandsanleitung). Solange kein Mailserver eingetragen ist, zeigt die
+        Verwaltung den Einladungslink an; er muss dann selbst weitergegeben werden.
+\end{enumerate}
+
+Protokolle der Einrichtung: lokal \pfad{logs/setup-<server>-<zeit>.log} neben dem
+Skript, auf dem Server \pfad{/var/log/fv-web-setup/}.
+
+% ==================================================================
+\section{Was automatisch läuft}
+
+\begin{description}[style=nextline,leftmargin=0pt,itemsep=0.3\baselineskip]
+  \item[Sicherheitsupdates von Debian] täglich durch \cmd{unattended-upgrades}, auch für
+    PostgreSQL und Caddy. Der Server startet dabei \textbf{nicht} von selbst neu
+    (siehe Wartungsplan, Abschnitt~\ref{sec:wartung}).
+  \item[Datensicherung] täglich gegen 03:30, sonntags mit Prüfung eines Teils der
+    gesicherten Daten.
+  \item[Zertifikat] Caddy holt und verlängert das Zertifikat selbst.
+  \item[Neustart bei Absturz] Die Dienste starten nach einem Fehler automatisch neu.
+\end{description}
+
+Nicht automatisch: neue Versionen der Anwendung, Updates der Python-Pakete
+(Django usw.) und Neustarts nach Kernel-Updates.
+
+% ==================================================================
+\section{Neue Version einspielen}\label{sec:update}
+
+\subsection{Normaler Weg}
+
+\begin{enumerate}
+  \item Änderung als Pull Request auf GitHub; die automatischen Tests (SQLite,
+        PostgreSQL, Installationsskript) müssen grün sein.
+  \item Pull Request in \cmd{main} übernehmen.
+  \item Auf dem Server einspielen:
+\begin{befehl}
+ssh fkjs@foerderverein-kf-jf-kreuzau.de sudo fv-web-update
+\end{befehl}
+\end{enumerate}
+
+\cmd{fv-web-update} holt den Stand, baut eine eigene Python-Umgebung, prüft die
+Konfiguration, \textbf{sichert die Datenbank}, migriert sie, sammelt die statischen
+Dateien, schaltet um und prüft, ob die Webseite antwortet (\pfad{/gesund/}).
+Startet die neue Version nicht, wird automatisch die vorige wieder aktiviert.
+Die Webseite ist dabei nur wenige Sekunden nicht erreichbar.
+
+\subsection{Weitere Möglichkeiten}
+
+\begin{center}
+\small
+\begin{tabularx}{\textwidth}{@{}>{\ttfamily}lX@{}}
+\toprule
+sudo fv-web-update <branch|tag|commit> & bestimmten Stand installieren, z.\,B.\ zum Testen eines Branches \\
+sudo fv-web-update -f                  & neu installieren, auch wenn der Stand schon aktiv ist \\
+sudo fv-web-update -{}-zurueck          & vorige Version aktivieren \\
+sudo fv-web-update -{}-status           & aktive und installierte Versionen \\
+sudo fv-web-update -{}-pruefen          & Zugriff auf das Repository testen \\
+\bottomrule
+\end{tabularx}
+\end{center}
+
+Vom eigenen Rechner aus geht es auch mit dem Einrichtungsskript: \cmd{-U} spielt nur
+die Anwendung ein; \cmd{-U -L} lädt den Stand des lokalen Repositorys hoch (z.\,B.\
+noch nicht gepushte Commits).
+
+\begin{dshinweis}[title={Zurück heißt nicht: Datenbank zurück}]
+\cmd{-{}-zurueck} und das automatische Zurückschalten nehmen Änderungen an der
+Datenbank (Migrationen) \emph{nicht} zurück. Bei Updates mit Datenbankänderungen
+ist im Notfall die Sicherung vor dem Update der Weg zurück
+(Abschnitt~\ref{sec:sicherung}).
+\end{dshinweis}
+
+\subsection{Python-Pakete und Django}
+
+Die Versionen aller Pakete stehen fest in \pfad{requirements.txt}. Updates
+(z.\,B.\ Sicherheitsupdates von Django) laufen wie jede Änderung: Versionsnummer im
+Pull Request erhöhen, Tests abwarten, übernehmen, \cmd{fv-web-update}. Django~6.1
+erhält Sicherheitsupdates bis Dezember 2027; der Umstieg auf die Langzeitversion
+6.2 (April 2027, Unterstützung bis April 2030) ist einzuplanen.
+
+% ==================================================================
+\section{Einstellungen}\label{sec:einstellungen}
+
+Die Einstellungen stehen in \pfad{/etc/fv-web/env} (eine Zeile \cmd{NAME=wert}).
+Nach einer Änderung:
+
+\begin{befehl}
+sudo systemctl restart fv-web      # startet den Newsletter-Dienst mit neu
+\end{befehl}
+
+\begin{center}
+\small
+\begin{tabularx}{\textwidth}{@{}>{\ttfamily\raggedright}p{52mm}X@{}}
+\toprule
+\textbf{\sffamily Variable} & \textbf{Bedeutung} \\
+\midrule
+FV\_SECRET\_KEY            & Geheimer Schlüssel; nicht weitergeben. Ändern meldet alle ab
+                             und macht offene Einladungslinks ungültig. \\
+FV\_MAIL                   & \cmd{datei} (Mails nur als Dateien in \pfad{/var/lib/fv-web/mails})
+                             oder \cmd{smtp} \\
+FV\_SMTP\_HOST, \_PORT, \_USER, \_PASSWORD & Zugang zum Mailserver \\
+FV\_SMTP\_TLS              & \cmd{starttls} (Port 587), \cmd{ssl} (Port 465) oder \cmd{aus} \\
+FV\_MAIL\_ABSENDER         & Absenderadresse, z.\,B.\ \cmd{webmaster@foerderverein-kf-jf-kreuzau.de};
+                             den Namen ergänzt die Webseite \\
+FV\_ADMINS                 & Adressen (durch Komma getrennt), die bei Programmfehlern eine
+                             Fehlermeldung per E-Mail erhalten (nur mit \cmd{smtp}) \\
+FV\_ADMIN\_PFAD            & Pfad der Verwaltung, Standard \cmd{verwaltung/} \\
+FV\_NEWSLETTER\_PAUSE      & Sekunden zwischen Probe und Versand an alle (300) \\
+FV\_NEWSLETTER\_ABSTAND    & Sekunden zwischen zwei Newsletter-Mails (3) \\
+FV\_NEWSLETTER\_MAX\_ANHANG\_MB & Größe, bis zu der Anhänge mitgehen (8) \\
+FV\_ZWEI\_FAKTOR\_PFLICHT  & \cmd{1}: Zwei-Faktor für Bearbeitende Pflicht (Standard; nicht abschalten) \\
+FV\_LOG\_LEVEL             & Ausführlichkeit des Protokolls, Standard \cmd{INFO} \\
+\midrule
+FV\_ALLOWED\_HOSTS, FV\_BASIS\_URL, FV\_CSRF\_TRUSTED\_ORIGINS & setzt das Skript aus der
+                             Domain -- nicht von Hand ändern \\
+FV\_DB\_*, FV\_*\_ROOT, FV\_MAIL\_DATEIEN & setzt das Skript -- nicht ändern \\
+\bottomrule
+\end{tabularx}
+\end{center}
+
+\subsection{Mailserver eintragen}
+
+\begin{befehl}
+sudo nano /etc/fv-web/env
+#   FV_MAIL=smtp
+#   FV_SMTP_HOST=mail.example.org
+#   FV_SMTP_PORT=587
+#   FV_SMTP_USER=webmaster@foerderverein-kf-jf-kreuzau.de
+#   FV_SMTP_PASSWORD=…
+#   FV_SMTP_TLS=starttls
+sudo systemctl restart fv-web
+\end{befehl}
+
+Danach in der Verwaltung eine Einladung an sich selbst senden und prüfen, ob sie
+ankommt. Für die Zustellung müssen SPF, DKIM und DMARC der Domain zum Mailserver
+passen.
+
+\subsection{Domain wechseln}
+
+Neue Domain im DNS eintragen und das Skript mit der neuen Domain und \cmd{-U} aufrufen.
+Es setzt die domainabhängigen Einstellungen, schreibt Caddy neu und startet die
+Webseite neu. Angemeldete Personen müssen sich neu anmelden; bereits verschickte
+Einladungslinks zeigen noch auf die alte Adresse.
+
+% ==================================================================
+\section{Datensicherung}\label{sec:sicherung}
+
+\subsection{Was, wann, wohin}
+
+\begin{itemize}
+  \item \textbf{Was:} Datenbank (als \cmd{pg\_dump}), alle Anhänge
+        (\pfad{/var/lib/fv-web/private}) und die Einstellungen (\pfad{/etc/fv-web}).
+  \item \textbf{Wann:} täglich gegen 03:30 und vor jedem Update; von Hand mit
+        \cmd{sudo fv-web-backup}.
+  \item \textbf{Wohin:} verschlüsselt mit restic nach \cmd{RESTIC\_REPOSITORY} in
+        \pfad{/etc/fv-web/backup.env}. Zusätzlich bleiben die Dumps der letzten 7 Tage
+        unverschlüsselt in \pfad{/var/backups/fv-web}.
+  \item \textbf{Aufbewahrung:} 30 tägliche und 12 monatliche Stände
+        (\cmd{BACKUP\_KEEP\_DAYS}, \cmd{BACKUP\_KEEP\_MONTHS}).
+\end{itemize}
+
+\begin{dshinweis}[title={Wichtig: Passwort der Sicherung außerhalb des Servers aufbewahren}]
+Ohne \cmd{RESTIC\_PASSWORD} aus \pfad{/etc/fv-web/backup.env} ist die Sicherung
+wertlos. Fällt der Server aus, ist auch diese Datei weg. Passwort und Backup-Ziel
+deshalb gleich nach der Einrichtung im Passwortsafe des Vereins ablegen:
+\begin{befehl}
+sudo grep -E '^(RESTIC_PASSWORD|RESTIC_REPOSITORY)=' /etc/fv-web/backup.env
+\end{befehl}
+\end{dshinweis}
+
+Liegt das Backup-Ziel auf dem Server selbst (Standard \pfad{/var/backups/fv-web-restic}),
+schützt es nur vor Bedienfehlern, nicht vor dem Ausfall des Servers. Ein externes Ziel,
+z.\,B.\ eine Storage-Box per SFTP, wird mit \cmd{-B} beim Einrichtungsskript gesetzt.
+
+\textbf{Überwachung:} Mit \cmd{BACKUP\_PING\_URL} in \pfad{backup.env} meldet die
+Sicherung Start, Erfolg und Fehler an einen Überwachungsdienst (z.\,B.\
+healthchecks.io), der eine E-Mail schickt, wenn eine Sicherung ausbleibt.
+
+\subsection{Wiederherstellen}
+
+\begin{center}
+\small
+\begin{tabularx}{\textwidth}{@{}>{\ttfamily\raggedright}p{60mm}X@{}}
+\toprule
+sudo fv-web-restore -l          & vorhandene Sicherungen anzeigen \\
+sudo fv-web-restore -t          & neuesten Stand in eine Test-Datenbank einspielen, Seiten und
+                                  Anhänge zählen, wieder löschen -- \textbf{ändert nichts} \\
+sudo fv-web-restore -r <stand> -E & Datenbank und Anhänge durch den Stand \textbf{ersetzen}
+                                  (Rückfrage; vorher automatische Sicherung) \\
+sudo fv-web-restore -r <stand> -d <datei> & einzelne Dateien unter \pfad{/var/lib/fv-web/private}
+                                  zurücklegen \\
+\bottomrule
+\end{tabularx}
+\end{center}
+
+\cmd{<stand>} ist die ID aus der Liste oder \cmd{latest}.
+
+\subsection{Neuer Server nach Totalausfall}
+
+\begin{enumerate}
+  \item Neuen vServer mit Debian 13 bereitstellen, DNS auf die neue Adresse.
+  \item \textbf{Vor} dem Einrichtungsskript das gesicherte Passwort hinterlegen, damit
+        das Skript kein neues erzeugt:
+\begin{befehl}
+ssh root@<neuer-server>
+install -d -m 750 /etc/fv-web
+( umask 077; echo 'RESTIC_PASSWORD=<aus dem Passwortsafe>' > /etc/fv-web/backup.env )
+\end{befehl}
+  \item Einrichtungsskript wie bei der Erstinstallation, mit demselben \cmd{-B}, aber
+        ohne \cmd{-a}/\cmd{-m}. Den neuen öffentlichen Backup-Schlüssel bei der
+        Storage-Box eintragen.
+  \item Sicherungen anzeigen und den letzten Stand \textbf{vor dem Ausfall} einspielen:
+\begin{befehl}
+sudo fv-web-restore -l
+sudo fv-web-restore -r <ID vom letzten Tag vor dem Ausfall> -E
+\end{befehl}
+        \textbf{Nicht} \cmd{latest} verwenden: Das Einrichtungsskript hat auf dem neuen
+        Server bereits eine erste Sicherung der noch leeren Datenbank angelegt, und
+        \cmd{latest} wäre dieser leere Stand. Die Liste zeigt Datum und Uhrzeit jedes
+        Stands.
+        Danach \cmd{sudo fv-web-update -f}: installiert die aktuelle Version erneut und
+        vergibt dabei die Leserechte für den Mailserver wieder.
+  \item Einstellungen wie den Mailserver-Zugang aus der Sicherung holen
+        (\pfad{/etc/fv-web} ist darin enthalten) und von Hand in die neue
+        \pfad{/etc/fv-web/env} übernehmen; danach \cmd{sudo systemctl restart fv-web}.
+        Bei einem SFTP-Ziel:
+\begin{befehl}
+sudo bash -c 'set -a; . /etc/fv-web/backup.env; restic -o sftp.args="-i /root/.ssh/fv-web-backup" restore <ID> --host fv-web --include /etc/fv-web --target /root/alt'
+sudo cat /root/alt/etc/fv-web/env
+\end{befehl}
+  \item Anmelden und Stichproben prüfen: Seiten, Anhänge, Benutzer.
+\end{enumerate}
+
+% ==================================================================
+\section{Überwachung und Störungen}\label{sec:stoerungen}
+
+\subsection{Zustand prüfen}
+
+\begin{befehl}
+systemctl status fv-web fv-web-newsletter caddy postgresql
+systemctl list-timers fv-web-backup.timer      # letzte und nächste Sicherung
+curl -s https://foerderverein-kf-jf-kreuzau.de/gesund/   # antwortet "ok"
+df -h /                                        # freier Plattenplatz
+sudo fv-web-update --status
+\end{befehl}
+
+\subsection{Protokolle}
+
+\begin{center}
+\small
+\begin{tabularx}{\textwidth}{@{}>{\ttfamily\raggedright}p{70mm}X@{}}
+\toprule
+journalctl -u fv-web -e              & Webseite: Fehler, Anfragen \\
+journalctl -u fv-web-newsletter -e   & Newsletter-Versand \\
+journalctl -u fv-web-backup -e       & Datensicherung \\
+journalctl -u caddy -e               & Zertifikat, Webserver \\
+sudo less /var/log/fv-web-update.log & alle Updates \\
+sudo less /var/log/caddy/fv-web.log  & Zugriffe (JSON) \\
+\bottomrule
+\end{tabularx}
+\end{center}
+
+\subsection{Häufige Störungen}
+
+\begin{description}[style=nextline,leftmargin=0pt,itemsep=0.5\baselineskip]
+  \item[Webseite zeigt „502“ oder lädt nicht]
+    \cmd{systemctl status fv-web}, \cmd{journalctl -u fv-web -n 50}. Nach einem
+    fehlgeschlagenen Update: \cmd{sudo fv-web-update -{}-status}, ggf.\
+    \cmd{-{}-zurueck}. Läuft PostgreSQL?
+  \item[Browser meldet Zertifikatsfehler]
+    \cmd{journalctl -u caddy -n 50}. Meist zeigt der DNS-Eintrag nicht auf den
+    Server oder Port 80 ist gesperrt.
+  \item[Newsletter-Statusseite: „Der Versanddienst meldet sich nicht“]
+    \cmd{systemctl status fv-web-newsletter}; \cmd{sudo systemctl restart fv-web}.
+    Der Versand setzt danach an derselben Stelle fort.
+  \item[E-Mails kommen nicht an]
+    Steht \cmd{FV\_MAIL=smtp} in \pfad{/etc/fv-web/env}? Fehlermeldungen im Protokoll
+    von fv-web bzw.\ im Newsletter-Protokoll der Webseite. Mit \cmd{FV\_MAIL=datei}
+    liegen die Mails in \pfad{/var/lib/fv-web/mails}.
+  \item[Sicherung fehlgeschlagen]
+    \cmd{journalctl -u fv-web-backup -n 30}. Häufig: Backup-Schlüssel nicht bei der
+    Storage-Box eingetragen oder Ziel voll. Danach \cmd{sudo fv-web-backup} von Hand.
+  \item[Platte voll]
+    \cmd{df -h}, \cmd{sudo du -sh /var/lib/fv-web/* /var/backups/* /var/log/*}.
+    Lokale Dumps nach 7 Tagen werden automatisch gelöscht; ein lokales restic-Ziel
+    wächst mit.
+  \item[Anmeldung per SSH gesperrt]
+    fail2ban sperrt eine Adresse nach 5 Fehlversuchen für eine Stunde. Über die
+    Konsole des Anbieters: \cmd{sudo fail2ban-client set sshd unbanip <adresse>}.
+\end{description}
+
+% ==================================================================
+\section{Verwaltungsaufgaben}\label{sec:verwaltung}
+
+Befehle der Anwendung laufen auf dem Server über \cmd{sudo fv-manage <befehl>}.
+
+\subsection{Administrator-Konto der Webseite}
+
+\begin{befehl}
+sudo fv-manage vorstand_anlegen <benutzername> <e-mail> --admin
+\end{befehl}
+
+Legt das Konto an (oder ergänzt ein vorhandenes), ordnet es der höchsten Stufe mit
+Bearbeitungsrecht zu und gibt einen Link zum Setzen des Passworts aus (7 Tage
+gültig). Ohne \cmd{-{}-admin} entsteht ein normales Vorstandskonto; mit
+\cmd{-{}-stufe <name>} eine andere Stufe.
+
+\subsection{Stufen und Einstellungen der Webseite}
+
+Nur für Administratoren, in der Verwaltung:
+\begin{itemize}
+  \item \textbf{Stufen}: Name, Rang (höher = mehr Rechte), \emph{darf bearbeiten}.
+        Eine Stufe mit zugeordneten Seiten lässt sich nicht löschen.
+  \item \textbf{Einstellungen der Webseite}: Name, Slogan, Inhaber (Fußzeile),
+        Ansprechpartner, Unterschrift unter E-Mails, weitere Antwortadresse für
+        Newsletter.
+\end{itemize}
+
+\subsection{Zwei-Faktor-Anmeldung zurücksetzen}
+
+Hat jemand das Smartphone verloren und keine Wiederherstellungscodes:
+
+\begin{befehl}
+sudo fv-manage zwei_faktor_zuruecksetzen <benutzername oder e-mail>
+\end{befehl}
+
+Vorher sicherstellen, dass die Anfrage wirklich von der Person kommt (z.\,B.\
+Rückruf). Personen mit Bearbeitungsrecht müssen die Zwei-Faktor-Anmeldung bei der
+nächsten Anmeldung neu einrichten.
+
+\subsection{Gelöschte Seite zurückholen}
+
+\begin{befehl}
+sudo fv-manage seite_wiederherstellen          # gelöschte Seiten mit Nummer
+sudo fv-manage seite_wiederherstellen 42       # Seite 42 zurückholen
+\end{befehl}
+
+Titel, Datum, Sichtbarkeit und Text kommen aus dem Versionsverlauf. Die Dateien der
+Anhänge wurden beim Löschen entfernt; der Befehl nennt die fehlenden Dateien und
+den passenden \cmd{fv-web-restore}-Befehl. Dafür einen Stand \emph{vor} dem Löschen
+wählen (\cmd{sudo fv-web-restore -l}). Danach denselben Befehl noch einmal aufrufen,
+er ergänzt die Anhänge.
+
+\subsection{Person ohne E-Mail-Versand einladen}
+
+Solange \cmd{FV\_MAIL=datei} gilt, zeigt die Verwaltung beim Einladen den Link an.
+Er muss dann auf anderem Weg an die Person gehen.
+
+% ==================================================================
+\section{Wartungsplan}\label{sec:wartung}
+
+\begin{center}
+\small
+\begin{tabularx}{\textwidth}{@{}lX@{}}
+\toprule
+\textbf{Wann} & \textbf{Was} \\
+\midrule
+monatlich     & Neustart, damit Kernel- und Bibliotheksupdates wirksam werden:
+                \cmd{sudo reboot} (Webseite etwa eine Minute weg), danach
+                \cmd{systemctl status fv-web} und Webseite prüfen. \\
+              & Sicherung prüfen: \cmd{systemctl list-timers fv-web-backup.timer},
+                \cmd{journalctl -u fv-web-backup -n 5}. \\
+              & Sicherheitsmeldungen zu Django und den Paketen prüfen
+                (\url{https://www.djangoproject.com/weblog/}); ggf.\ Update
+                (Abschnitt~\ref{sec:update}). \\
+vierteljährlich & Wiederherstellungstest: \cmd{sudo fv-web-restore -t}. \\
+              & Benutzerkonten mit dem Vorstand durchsehen: Ausgeschiedene deaktiviert? \\
+jährlich      & Zugänge im Passwortsafe prüfen (Backup-Passwort, Storage-Box, GitHub,
+                SSH-Schlüssel der Betreuung). \\
+              & Plattenplatz und Größe der Sicherung prüfen. \\
+Frühjahr 2027 & Umstieg auf Django 6.2 LTS. \\
+\bottomrule
+\end{tabularx}
+\end{center}
+
+% ==================================================================
+\section{Ausblick: Mailserver}
+
+Geplant ist ein eigener Mailserver (Exim, Dovecot) auf demselben Server. Postfächer
+gibt es nur für Personen mit Vereinsadresse; das Passwort ist dasselbe wie für die
+Webseite. Dovecot liest dazu über die Datenbankrolle \cmd{dovecot} nur die Sicht
+\cmd{dovecot\_benutzer}. Die Rolle legt das Einrichtungsskript an, das Leserecht
+vergibt \cmd{fv-web-update}. Die Konfiguration des Mailservers folgt in einer
+späteren Fassung dieses Handbuchs.
+
+\end{document}

@@ -12,8 +12,23 @@
 \renewcommand*{\topfraction}{0.9}
 \renewcommand*{\floatpagefraction}{0.8}
 
+% Vereinskopf statt deb-support (Vorlage bleibt, nur die Absenderdaten wechseln)
+\dssetup{firma=Förderverein KF/JF Kreuzau}
+\makeatletter
+\renewcommand*{\dslogo}[1][24.88]{%
+  {\color{dsrot}\dsserif\fontsize{#1}{#1}\selectfont\scshape\dsFirma}}
+\renewcommand*{\ds@kopf}{%
+  \put(24.5,279.4){\makebox(0,0)[lb]{\dslogo[20]}}%
+  \put(195.6,276.3){\makebox(0,0)[rb]{{\dsserif\fontsize{12}{14.45}\selectfont
+     \begin{tabular}[b]{@{}r@{}}Kinder- und Jugendfeuerwehr\\Kreuzau\\
+     foerderverein-kf-jf-kreuzau.de\end{tabular}}}}%
+  \put(17.8,271.85){\rule{179.8mm}{0.4pt}}}
+\renewcommand*{\dsfolgekopf}[1]{%
+  \parbox[b]{\textwidth}{\dslogo[11]\hfill #1\\[-0.4ex]%
+    \rule{\textwidth}{0.4pt}}}
+\makeatother
 \renewcommand*{\dsdokumentart}{Anleitung}
-\renewcommand*{\dskurztitel}{Webseite Förderverein KF/JF Kreuzau -- Anleitung für Mitglieder}
+\renewcommand*{\dskurztitel}{Webseite -- Anleitung für Mitglieder}
 \renewcommand*{\dsbeleg}{}
 \setlength{\emergencystretch}{3em}
 \graphicspath{{bilder/}}

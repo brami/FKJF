@@ -188,8 +188,10 @@ class Seite(models.Model):
         return self.stufe.name if self.stufe_id else OEFFENTLICH
 
     def vorschau(self, woerter=40):
-        # Absätze, Listenpunkte usw. durch Leerzeichen trennen, damit Wörter nicht zusammenkleben
-        text = re.sub(r"<(/(p|h[1-6]|li|td|th|blockquote)|br\s*/?)>", " ", self.inhalt or "")
+        # Absätze, Listenpunkte usw. trennen, damit Wörter nicht zusammenkleben;
+        # Listenpunkte mit Komma („Begrüßung, Bericht, Wahlen“)
+        text = re.sub(r"</li>\s*(?=<li)", ", ", self.inhalt or "")
+        text = re.sub(r"<(/(p|h[1-6]|li|td|th|blockquote)|br\s*/?)>", " ", text)
         return Truncator(" ".join(strip_tags(text).split())).words(woerter, truncate=" …")
 
     # Anhänge aufgeteilt: Bilder (Titelbild zuerst) und übrige Dateien.

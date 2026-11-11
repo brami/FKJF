@@ -14,7 +14,7 @@
       </p>
       <h2><a href="{{ s.get_absolute_url }}">{{ s.titel }}</a></h2>
       <p>{{ s.vorschau }}</p>
-      {% with n=s.dateien|length %}{% if n %}<p class="hinweis">{{ n }} Anhang/Anhänge</p>{% endif %}{% endwith %}
+      {% with n=s.dateien|length %}{% if n %}<p class="hinweis">{% if n == 1 %}1 Anhang{% else %}{{ n }} Anhänge{% endif %}</p>{% endif %}{% endwith %}
       <p><a href="{{ s.get_absolute_url }}">Weiterlesen</a></p>
       </div>
     </article>

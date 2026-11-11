@@ -136,6 +136,10 @@ ACCOUNT_LOGIN_ON_PASSWORD_RESET = False
 ACCOUNT_PASSWORD_INPUT_RENDER_VALUE = False
 ACCOUNT_EMAIL_UNKNOWN_ACCOUNTS = False   # keine Mail mit Registrierungsangebot an unbekannte Adressen
 MFA_SUPPORTED_TYPES = ["totp", "recovery_codes"]
+# allauth sperrt die Zwei-Faktor-Einrichtung, solange eine Adresse „nicht bestätigt“ ist
+# (Schutz bei Selbstregistrierung). Hier gibt es keine Registrierung, die Adressen trägt
+# der Vorstand ein – und Einladung/„Passwort vergessen“ legen sie unbestätigt an.
+MFA_ALLOW_UNVERIFIED_EMAIL = True
 MFA_ADAPTER = "seiten.konto.MfaAdapter"   # Name in der Authenticator-App = Name der Webseite
 # Zwei-Faktor-Anmeldung ist für den Vorstand (und Administratoren) Pflicht
 FV_ZWEI_FAKTOR_PFLICHT = env_bool("FV_ZWEI_FAKTOR_PFLICHT", True)

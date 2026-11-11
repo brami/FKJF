@@ -4,3 +4,4 @@ pytest-django==4.14.0
 pluggy==1.7.0
 iniconfig==2.3.1
 Pygments==2.21.0
+PyNaCl==1.6.2           # Tests: Passwort-Hashes mit libsodium prüfen (wie Dovecot)

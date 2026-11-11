@@ -100,17 +100,25 @@ else:
         }
     }
 
+# Argon2id, lesbar für Dovecot (siehe seiten/passwort.py); ältere Verfahren nur zum Prüfen
+PASSWORD_HASHERS = [
+    "seiten.passwort.Argon2DovecotHasher",
+    "django.contrib.auth.hashers.PBKDF2PasswordHasher",
+]
+
 AUTH_PASSWORD_VALIDATORS = [
     {"NAME": "django.contrib.auth.password_validation.UserAttributeSimilarityValidator"},
     {"NAME": "django.contrib.auth.password_validation.MinimumLengthValidator",
      "OPTIONS": {"min_length": 10}},
     {"NAME": "django.contrib.auth.password_validation.CommonPasswordValidator"},
     {"NAME": "django.contrib.auth.password_validation.NumericPasswordValidator"},
+    {"NAME": "seiten.passwort.PostfachMindestlaenge", "OPTIONS": {"min_length": 12}},
 ]
 
 AUTHENTICATION_BACKENDS = [
     "django.contrib.auth.backends.ModelBackend",
     "allauth.account.auth_backends.AuthenticationBackend",
+    "seiten.konto.VereinsadresseBackend",   # Anmelden mit der Vereinsadresse
 ]
 LOGIN_URL = "account_login"
 LOGIN_REDIRECT_URL = "startseite"
@@ -118,6 +126,7 @@ LOGOUT_REDIRECT_URL = "startseite"
 
 # Anmeldung (django-allauth). Konten legt nur der Vorstand an (keine Registrierung).
 ACCOUNT_ADAPTER = "seiten.konto.KontoAdapter"
+ACCOUNT_FORMS = {"reset_password": "seiten.konto.PasswortVergessenForm"}
 ACCOUNT_LOGIN_METHODS = {"username", "email"}
 ACCOUNT_SIGNUP_FIELDS = ["email*", "username*", "password1*", "password2*"]
 ACCOUNT_EMAIL_VERIFICATION = "none"

@@ -8,14 +8,27 @@
   <table class="tabelle">
     <tr><th>Name</th><td>{{ user.get_full_name|default:"–" }}</td></tr>
     <tr><th>Benutzername</th><td>{{ user.username }}</td></tr>
-    <tr><th>E-Mail-Adresse</th><td>{{ user.email|default:"–" }}</td></tr>
+    <tr><th>Externe E-Mail-Adresse</th><td>{{ user.email|default:"–" }}
+      <span class="hilfe">– für „Passwort vergessen“ und Einladungen</span></td></tr>
+    {% if profil.vereins_email %}<tr><th>Vereinsadresse (Postfach)</th><td>{{ profil.vereins_email }}</td></tr>{% endif %}
     <tr><th>Gruppe</th><td>{% for g in user.groups.all %}{{ g.name }}{% if not forloop.last %}, {% endif %}{% empty %}–{% endfor %}</td></tr>
   </table>
-  <p class="hilfe">Name, E-Mail-Adresse und Gruppe ändert der Vorstand.</p>
+  <p class="hilfe">Name, E-Mail-Adressen und Gruppe ändert der Vorstand.</p>
+
+  {% if zustellung_form %}
+    <h2>Vereinsmails</h2>
+    <form method="post" class="formular">
+      {% csrf_token %}
+      {{ zustellung_form.as_div }}
+      <button type="submit">Speichern</button>
+    </form>
+  {% endif %}
 
   <h2>Sicherheit</h2>
   <ul>
-    <li><a href="{% url 'account_change_password' %}">Passwort ändern</a></li>
+    <li><a href="{% url 'account_change_password' %}">Passwort ändern</a>
+      {% if profil.vereins_email %}<span class="hilfe">– gilt auch für Ihr Postfach; danach das neue Passwort
+      in den Mailprogrammen (Handy, PC) eintragen.</span>{% endif %}</li>
     <li>Zwei-Faktor-Anmeldung:
       {% if zwei_faktor %}eingerichtet – <a href="{% url 'mfa_index' %}">verwalten</a>
       {% else %}nicht eingerichtet – <a href="{% url 'mfa_activate_totp' %}">einrichten</a>{% endif %}

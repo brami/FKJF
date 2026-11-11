@@ -521,6 +521,12 @@ EOF
     runuser -u postgres -- createdb --owner "$SVC" --encoding UTF8 --locale C.UTF-8 --template template0 "$SVC"
     log "Datenbank $SVC angelegt."
   fi
+  # Rolle für den Mailserver (Dovecot): Anmeldung nur lokal per Socket als Systembenutzer
+  # "dovecot"; Leserecht ausschließlich auf die Sicht dovecot_benutzer (vergibt fv-web-update)
+  if [[ "$(runuser -u postgres -- psql -tAc "SELECT 1 FROM pg_roles WHERE rolname='dovecot'")" != 1 ]]; then
+    runuser -u postgres -- createuser --no-superuser --no-createdb --no-createrole dovecot
+    log "Datenbankrolle dovecot angelegt (für die Passwortprüfung des Mailservers)."
+  fi
   log "PostgreSQL lauscht nur lokal: $(runuser -u postgres -- psql -tAc 'SHOW listen_addresses')"
 
   step "Dienst fv-web (gunicorn)"
@@ -980,6 +986,15 @@ installiere() {  # installiere <tar.gz> <commit> <beschreibung>
   step "Datenbank migrieren, statische Dateien"
   manage_in "$rel" migrate --noinput
   manage_in "$rel" createcachetable
+  # Mailserver: Leserecht nur auf die Sicht mit Vereinsadressen und Passwort-Hashes
+  runuser -u postgres -- psql -d fvweb -qtAc "
+    DO \$\$ BEGIN
+      IF EXISTS (SELECT FROM pg_roles WHERE rolname = 'dovecot')
+         AND EXISTS (SELECT FROM pg_views WHERE viewname = 'dovecot_benutzer') THEN
+        GRANT CONNECT ON DATABASE fvweb TO dovecot;
+        GRANT SELECT ON dovecot_benutzer TO dovecot;
+      END IF;
+    END \$\$;" >/dev/null
   manage_in "$rel" collectstatic --noinput --clear -v0
   log "Statische Dateien: $(find "$DATA/static" -type f | wc -l)"
 

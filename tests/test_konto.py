@@ -130,7 +130,10 @@ def vorstand_client(client):
 def neuer_benutzer(**werte):
     daten = {"username": "neu.mitglied", "first_name": "Neu", "last_name": "Mitglied",
              "email": "neu@example.org",
-             "groups": [Group.objects.get(name="Mitglieder").pk], "einladen": "on"}
+             "groups": [Group.objects.get(name="Mitglieder").pk], "einladen": "on",
+             "profil-TOTAL_FORMS": "1", "profil-INITIAL_FORMS": "0",
+             "profil-MIN_NUM_FORMS": "0", "profil-MAX_NUM_FORMS": "1",
+             "profil-0-vereins_email": "", "profil-0-zustellung": "extern"}
     daten.update(werte)
     return daten
 

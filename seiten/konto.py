@@ -4,11 +4,15 @@ import time
 
 from allauth.account import app_settings as account_settings
 from allauth.account.adapter import DefaultAccountAdapter
+from allauth.account.forms import ResetPasswordForm
 from allauth.account.internal.flows.login import get_authentication_records
 from allauth.account.forms import default_token_generator
 from allauth.account.utils import user_pk_to_url_str
 from allauth.mfa.utils import is_mfa_enabled
 from django.conf import settings
+from django import forms
+from django.contrib import messages
+from django.contrib.auth.backends import ModelBackend
 from django.contrib.auth.decorators import login_required
 from django.core.mail import send_mail
 from django.shortcuts import redirect, render
@@ -44,6 +48,42 @@ class KontoAdapter(DefaultAccountAdapter):
         if not records:
             return False
         return time.time() - records[-1]["at"] < account_settings.REAUTHENTICATION_TIMEOUT
+
+
+# ------------------------------------------------- Vereinsadresse (Postfach)
+
+class VereinsadresseBackend(ModelBackend):
+    """Anmelden mit der Vereinsadresse (zusätzlich zu Benutzername und externer Adresse)."""
+
+    def authenticate(self, request, email=None, password=None, **kwargs):
+        from .models import Profil
+
+        if not email or password is None:
+            return None
+        profil = (Profil.objects.select_related("user")
+                  .filter(vereins_email__iexact=email.strip()).first())
+        if profil is None:
+            return None
+        user = profil.user
+        if user.check_password(password) and self.user_can_authenticate(user):
+            return user
+        return None
+
+
+class PasswortVergessenForm(ResetPasswordForm):
+    """„Passwort vergessen“ auch mit der Vereinsadresse – der Link geht aber immer an
+    die externe Adresse: Das Postfach hat dasselbe Passwort und wäre ohne es nicht
+    erreichbar."""
+
+    def clean_email(self):
+        from .models import Profil
+
+        eingabe = (self.cleaned_data.get("email") or "").strip()
+        profil = (Profil.objects.select_related("user")
+                  .filter(vereins_email__iexact=eingabe, user__is_active=True).first())
+        if profil and profil.user.email:
+            self.cleaned_data["email"] = profil.user.email
+        return super().clean_email()
 
 
 # --------------------------------------------------------------- Einladung
@@ -107,12 +147,38 @@ class ZweiFaktorPflichtMiddleware:
 
 # ------------------------------------------------------------ Kontoseite
 
+class ZustellungForm(forms.Form):
+    zustellung = forms.ChoiceField(label="Vereinsmails (z. B. Newsletter)", widget=forms.RadioSelect)
+
+    def __init__(self, *args, profil, **kwargs):
+        super().__init__(*args, **kwargs)
+        from .models import Profil
+        self.fields["zustellung"].choices = [
+            (Profil.Zustellung.EXTERN, f"an meine externe Adresse ({profil.user.email})"),
+            (Profil.Zustellung.VEREIN, f"an meine Vereinsadresse ({profil.vereins_email})"),
+        ]
+        self.fields["zustellung"].initial = profil.zustellung
+
+
 @login_required
 def konto(request):
+    from .models import profil_von
+
+    profil = profil_von(request.user)
+    form = None
+    if profil.vereins_email:
+        form = ZustellungForm(request.POST or None, profil=profil)
+        if request.method == "POST" and form.is_valid():
+            profil.zustellung = form.cleaned_data["zustellung"]
+            profil.save()
+            messages.success(request, "Ihre Einstellung wurde gespeichert.")
+            return redirect("konto")
     return render(request, "konto/uebersicht.html", {
         "zwei_faktor": is_mfa_enabled(request.user, ["totp"]),
         "pflicht": settings.FV_ZWEI_FAKTOR_PFLICHT and rechte.darf_bearbeiten(request.user),
         "stufe": rechte.stufe_von(request.user),
+        "profil": profil,
+        "zustellung_form": form,
     })
 
 

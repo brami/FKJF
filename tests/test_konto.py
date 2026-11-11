@@ -270,3 +270,8 @@ def test_zwei_faktor_einrichtbar_nach_normaler_anmeldung(client, pflicht):
     r = client.post(reverse("mfa_activate_totp"), {"code": f"{code:06d}"})
     assert r.status_code == 302
     assert Authenticator.objects.filter(user=vera, type="totp").exists()
+
+
+def test_passwort_vergessen_in_sie_form(client):
+    html = client.get(reverse("account_reset_password")).content.decode()
+    assert "kontaktiere" not in html and "wenden Sie sich an uns" in html

@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>{% block titel %}Förderverein KF/JF Kreuzau{% endblock %}</title>
+  <title>{% block titel %}{{ fv_webseite.name }}{% endblock %}</title>
   <link rel="stylesheet" href="{% static 'css/fv.css' %}">
   {% block robots %}{% endblock %}
 </head>
@@ -12,8 +12,8 @@
   <header class="kopf">
     <div class="rahmen">
       <a class="marke" href="{% url 'startseite' %}">
-        <span class="name">Förderverein KF/JF Kreuzau</span>
-        <span class="slogan">Die Unterstützung der Jugendarbeit in der Feuerwehr Kreuzau</span>
+        <span class="name">{{ fv_webseite.name }}</span>
+        {% if fv_webseite.slogan %}<span class="slogan">{{ fv_webseite.slogan }}</span>{% endif %}
       </a>
       <nav class="konto" aria-label="Benutzerkonto">
         {% if user.is_authenticated %}
@@ -37,7 +37,7 @@
   <footer class="fuss">
     <div class="rahmen">
       {# Links auf Impressum/Datenschutz folgen, sobald die Seiten angelegt sind #}
-      &copy; Förderverein der Kinder- und Jugendfeuerwehr Kreuzau e.&nbsp;V.
+      &copy; {{ fv_webseite.fuss }}
     </div>
   </footer>
 </body>

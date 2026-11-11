@@ -45,6 +45,15 @@ Tests: `python -m pytest`
 | `FV_PRIVATE_MEDIA_ROOT` | Ablage der Anhänge (außerhalb des Webverzeichnisses) |
 | `FV_ADMIN_PFAD` | Pfad der Verwaltung, Standard `verwaltung/` |
 
+## Name und Texte der Webseite
+
+Name, Slogan, Fußzeile („© …“), Ansprechpartner („Für ein Konto wenden Sie sich bitte
+an …“) und die Unterschrift unter E-Mails pflegen Administratoren in der Verwaltung unter
+*Einstellungen der Webseite*. Der Name erscheint auch im Fenstertitel, im Betreff der
+E-Mails, als Absendername (wenn `FV_MAIL_ABSENDER` nur eine Adresse enthält) und in der
+Authenticator-App. Für den Förderverein übernimmt die Migration die bisherigen Texte.
+Im Quellcode steht damit nichts Vereinsspezifisches mehr.
+
 ## Stufen
 
 Wer was sieht, regeln **Stufen**. Jede Seite gehört zu einer Stufe; sie sehen alle

@@ -11,9 +11,18 @@ from seiten import bearbeiten, konto, rechte, views
 # Die Verwaltung liegt nicht unter /admin/, um automatisierte Angriffe zu erschweren.
 ADMIN_PFAD = os.environ.get("FV_ADMIN_PFAD", "verwaltung/")
 
-admin.site.site_header = "Förderverein KF/JF Kreuzau – Verwaltung"
 admin.site.site_title = "Verwaltung"
 admin.site.index_title = "Übersicht"
+_each_context = admin.site.each_context
+
+
+def _kontext_mit_name(request):
+    ctx = _each_context(request)
+    ctx["site_header"] = f"{konto.webseite().name} – Verwaltung"
+    return ctx
+
+
+admin.site.each_context = _kontext_mit_name
 # Zugang zur Verwaltung nur für den Vorstand – Anmeldung immer über die normale
 # Anmeldeseite (sonst ließe sich die Zwei-Faktor-Anmeldung umgehen)
 admin.site.has_permission = lambda request: rechte.darf_bearbeiten(request.user)

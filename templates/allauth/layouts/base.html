@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 {% comment %}Seiten von django-allauth (Anmeldung, Passwort, Zwei-Faktor) im Layout der Webseite.{% endcomment %}
-{% block titel %}{% block head_title %}{% endblock head_title %} – Förderverein KF/JF Kreuzau{% endblock %}
+{% block titel %}{% block head_title %}{% endblock head_title %} – {{ fv_webseite.name }}{% endblock %}
 {% block robots %}<meta name="robots" content="noindex">{% endblock %}
 {% block inhalt %}
   <div class="konto-seite">

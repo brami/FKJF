@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 
-{% block titel %}{{ seite.titel }} – Förderverein KF/JF Kreuzau{% endblock %}
+{% block titel %}{{ seite.titel }} – {{ fv_webseite.name }}{% endblock %}
 {% block robots %}{% if seite.stufe %}<meta name="robots" content="noindex, nofollow">{% endif %}{% endblock %}
 
 {% block inhalt %}

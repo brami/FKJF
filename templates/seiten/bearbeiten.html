@@ -1,7 +1,7 @@
 {% extends "base.html" %}
 {% load static %}
 
-{% block titel %}{% if seite.pk %}Bearbeiten: {{ seite.titel }}{% else %}Neue Seite{% endif %} – Förderverein KF/JF Kreuzau{% endblock %}
+{% block titel %}{% if seite.pk %}Bearbeiten: {{ seite.titel }}{% else %}Neue Seite{% endif %} – {{ fv_webseite.name }}{% endblock %}
 {% block robots %}<meta name="robots" content="noindex">{% endblock %}
 
 {% block inhalt %}

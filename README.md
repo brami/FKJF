@@ -44,33 +44,45 @@ Tests: `python -m pytest`
 ## Installation auf dem Server
 
 Das Skript `deploy/setup-server-fv-web.sh` richtet einen Debian-13-vServer per SSH ein
-und spielt die Anwendung ein (PostgreSQL, gunicorn, Caddy aus Debian; kein Docker).
-Es läuft auf dem eigenen Rechner und überträgt den Code per `git archive` – auf dem
-Server werden keine Git-Zugangsdaten gebraucht. Es kann im Repository liegen (dann
-wird der lokale Git-Stand installiert) oder allein irgendwo: Dann holt es den Stand
-selbst von GitHub (Standard: `main`; anderes Repository mit `-R`).
+(PostgreSQL, gunicorn, Caddy aus Debian; kein Docker). Es kann allein irgendwo liegen.
+Die Anwendung holt **der Server selbst** von GitHub – über den Befehl `fv-web-update`,
+den das Skript dort einrichtet. Updates gehen danach auch ohne das Skript.
 
 ```sh
 # Nur prüfen (SSH, belegte Ports, DNS) – ändert nichts:
-deploy/setup-server-fv-web.sh -H <server> -d foerderverein-kf-jf-kreuzau.de -W -c
+./setup-server-fv-web.sh -H <server> -d foerderverein-kf-jf-kreuzau.de -W -c
 
 # Erstinstallation mit Vorstandskonto (gibt einen Link zum Setzen des Passworts aus):
-deploy/setup-server-fv-web.sh -H <server> -d foerderverein-kf-jf-kreuzau.de -W \
+./setup-server-fv-web.sh -H <server> -d foerderverein-kf-jf-kreuzau.de -W \
     -n fv-web -a vorname.nachname -m adresse@example.org
 
-# Neue Version einspielen:
-deploy/setup-server-fv-web.sh -H <server> -d foerderverein-kf-jf-kreuzau.de -U -r main
+# Neue Version (main) einspielen:
+ssh fkjs@<server> sudo fv-web-update
+
+# Lokalen, noch nicht gepushten Stand testen (Skript im Repository aufrufen):
+deploy/setup-server-fv-web.sh -H <server> -d foerderverein-kf-jf-kreuzau.de -U -L
 ```
 
-Voraussetzung: Anmeldung als `root` per SSH-Schlüssel. Danach legt das Skript den
-Admin-Benutzer `fkjs` an und sperrt den root-Login. Alle Optionen: `-h`.
+Voraussetzung für die Erstinstallation: Anmeldung als `root` per SSH-Schlüssel. Danach
+legt das Skript den Admin-Benutzer `fkjs` an und sperrt den root-Login. Alle Optionen: `-h`.
+
+Privates Repository: mit `-R git@github.com:brami/FKJF.git` aufrufen. Der Server zeigt
+dann seinen Deploy-Schlüssel an; diesen bei GitHub unter *Settings → Deploy keys* ohne
+Schreibrecht eintragen und den Aufruf wiederholen.
 
 Auf dem Server:
 
 | Befehl | Zweck |
 |---|---|
+| `sudo fv-web-update [<ref>]` | Stand holen und installieren (Standard: `main`); `-f` erzwingt |
+| `sudo fv-web-update --zurueck` | vorige Version wieder aktivieren |
+| `sudo fv-web-update --status` | installierte Versionen anzeigen |
 | `sudo fv-manage <befehl>` | Django-Befehle, z. B. `vorstand_anlegen` |
 | `sudo systemctl status fv-web` / `journalctl -u fv-web` | Dienst und Protokoll |
 | `sudo fv-web-backup` | Datensicherung sofort ausführen (sonst täglich ~03:30) |
 | `sudo fv-web-restore -l` / `-t` | Sicherungen anzeigen / Wiederherstellung testen |
 | `/etc/fv-web/env` | Einstellungen, z. B. Mailserver (`FV_MAIL=smtp`, `FV_SMTP_*`) |
+
+Jede Installation: Sicherung → Migration → Neustart → Statusprüfung. Startet die neue
+Version nicht, wird automatisch die vorige wieder aktiviert (Migrationen werden dabei
+nicht zurückgenommen).

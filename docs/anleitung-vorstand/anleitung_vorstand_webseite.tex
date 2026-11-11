@@ -1,0 +1,448 @@
+% =====================================================================
+%  Webseite Förderverein KF/JF Kreuzau -- Anleitung für den Vorstand
+%  Vorlage: deb-support (debsupport.sty, siehe latex/README.md), Vereinskopf
+%  Bilder: Bildschirmfotos einer Testinstallation mit Beispieldaten
+%  Übersetzen mit:  pdflatex anleitung_vorstand_webseite.tex  (3x)
+% =====================================================================
+\documentclass[a4paper,fontsize=10pt]{scrartcl}
+\usepackage[bericht]{debsupport}
+\usepackage{float}
+\setcounter{tocdepth}{1}
+
+% Vereinskopf statt deb-support (Vorlage bleibt, nur die Absenderdaten wechseln)
+\dssetup{firma=Förderverein KF/JF Kreuzau}
+\makeatletter
+\renewcommand*{\ds@kopf}{%
+  \put(24.5,279.4){\makebox(0,0)[lb]{\dslogo[20]}}%
+  \put(195.6,276.3){\makebox(0,0)[rb]{{\dsserif\fontsize{12}{14.45}\selectfont
+     \begin{tabular}[b]{@{}r@{}}Kinder- und Jugendfeuerwehr\\Kreuzau\\
+     foerderverein-kf-jf-kreuzau.de\end{tabular}}}}%
+  \put(17.8,271.85){\rule{179.8mm}{0.4pt}}}
+\renewcommand*{\dsfolgekopf}[1]{%
+  \parbox[b]{\textwidth}{\dslogo[11]\hfill #1\\[-0.4ex]%
+    \rule{\textwidth}{0.4pt}}}
+\makeatother
+\renewcommand*{\dsdokumentart}{Anleitung}
+\renewcommand*{\dskurztitel}{Webseite -- Anleitung für den Vorstand}
+\renewcommand*{\dsbeleg}{}
+\setlength{\emergencystretch}{3em}
+\graphicspath{{bilder/}}
+
+% Bildschirmfoto mit dünnem Rahmen:  \foto[Breite]{Datei}{Bildunterschrift}
+\newcommand{\foto}[3][0.72\textwidth]{%
+  \begin{figure}[H]
+    \centering
+    \fcolorbox{dsgrau!60}{white}{\includegraphics[width=#1]{#2}}
+    \caption{#3}
+  \end{figure}}
+\newcommand*{\knopf}[1]{\textbf{\guillemotright #1\guillemotleft}}
+\newcommand*{\stufe}[1]{\fbox{\small #1}}
+\setcapindent{0pt}\addtokomafont{caption}{\small}\addtokomafont{captionlabel}{\bfseries}
+
+\begin{document}
+
+\dstitel{Die Webseite des Fördervereins}
+        {Anleitung für den Vorstand: Seiten und Anhänge pflegen, Versionsverlauf,
+         Newsletter, Benutzer verwalten}
+        {Webseite: & \url{https://foerderverein-kf-jf-kreuzau.de}\\
+         Für:      & Vorstandsmitglieder (Stufe mit Bearbeitungsrecht)\\
+         Stand:    & \today}
+
+\begin{dshinweis}[title=Kurz und knapp]
+\begin{enumerate}
+  \item Anmelden mit Passwort \emph{und} sechsstelligem Code aus der
+        Authenticator-App; die Zwei-Faktor-Anmeldung ist für den Vorstand Pflicht.
+  \item \knopf{+ Neue Seite} auf der Startseite: Titel, Datum, \emph{Sichtbar für},
+        Text, Dateien. \knopf{Speichern}.
+  \item Unter jeder Seite: \emph{Bearbeiten · Versionsverlauf · Als Newsletter
+        versenden · Löschen}.
+  \item Personen anlegen und einladen: \emph{Verwaltung} $\rightarrow$
+        \emph{Benutzer} $\rightarrow$ \knopf{Benutzer hinzufügen}.
+\end{enumerate}
+\end{dshinweis}
+
+\tableofcontents
+
+% ------------------------------------------------------------------
+\section{Überblick}
+
+Diese Anleitung ergänzt die \emph{Anleitung für Mitglieder}, die Anmelden,
+Lesen, \emph{Mein Konto} und \emph{Passwort vergessen} beschreibt. Hier geht es
+um das, was nur der Vorstand kann:
+
+\begin{itemize}
+  \item Seiten anlegen, ändern und löschen, Dateien und Bilder anhängen,
+  \item frühere Fassungen einer Seite ansehen und wiederherstellen,
+  \item Seiten als Newsletter per E-Mail verschicken,
+  \item Personen anlegen, einladen, einer Stufe zuordnen und deaktivieren.
+\end{itemize}
+
+Nach der Anmeldung stehen oben rechts zusätzlich \emph{Newsletter} und
+\emph{Verwaltung}; auf der Startseite gibt es den Knopf \knopf{+ Neue Seite}.
+Der Vorstand sieht alle Seiten, auch die mit \stufe{Vorstand}.
+
+\foto[0.6\textwidth]{v03b_kopfzeile_vorstand}{Kopfzeile für den Vorstand}
+
+\subsection*{Stufen}
+
+Jede Seite hat eine Stufe (\emph{Sichtbar für}). Sie ist sichtbar für diese Stufe
+und alle höheren:
+
+\begin{center}
+\begin{tabularx}{0.9\textwidth}{@{}lX@{}}
+\toprule
+\textbf{Sichtbar für} & \textbf{wer sieht die Seite} \\
+\midrule
+Öffentlich (ohne Anmeldung) & alle, auch Suchmaschinen \\
+Fördermitglieder            & Fördermitglieder, Mitglieder, Vorstand \\
+Mitglieder                  & Mitglieder, Vorstand \\
+Vorstand                    & nur der Vorstand \\
+\bottomrule
+\end{tabularx}
+\end{center}
+
+Anhänge und Bilder haben immer dieselbe Sichtbarkeit wie ihre Seite.
+
+% ------------------------------------------------------------------
+\section{Anmelden mit Zwei-Faktor}
+
+Wer Seiten bearbeiten darf, muss sich zusätzlich mit einem Code aus einer
+Authenticator-App auf dem Smartphone anmelden, etwa \emph{Aegis}, \emph{FreeOTP},
+\emph{Google} oder \emph{Microsoft Authenticator}. So reicht ein ausgespähtes
+Passwort allein nicht, um Inhalte zu ändern oder Mails an alle Mitglieder zu
+verschicken.
+
+\subsection*{Einrichten (einmalig)}
+
+Nach der ersten Anmeldung führt jede Seite zur Einrichtung:
+
+\begin{enumerate}
+  \item In der App ein neues Konto hinzufügen und den QR-Code scannen.
+  \item Den sechsstelligen Code aus der App bei \emph{Authentifizierungscode}
+        eintragen und \knopf{Aktivieren} klicken.
+\end{enumerate}
+
+\foto[0.62\textwidth]{v01_zwei_faktor_pflicht}{Einrichtung der Zwei-Faktor-Anmeldung
+  beim ersten Anmelden}
+
+\subsection*{Anmelden}
+
+Nach Benutzername und Passwort fragt die Webseite nach dem aktuellen Code aus
+der App. Der Code wechselt alle 30~Sekunden.
+
+\foto[0.62\textwidth]{v02_code_eingeben}{Code aus der App eingeben}
+
+\begin{dshinweis}[title=Für den Notfall vorsorgen]
+Unter \emph{Mein Konto} $\rightarrow$ \emph{Zwei-Faktor-Anmeldung}
+$\rightarrow$ \knopf{verwalten} \textbf{Wiederherstellungscodes} erzeugen,
+ausdrucken und sicher aufbewahren. Damit kommen Sie auch ohne Smartphone in
+Ihr Konto. Ohne Codes kann nur die Betreuung der Webseite die
+Zwei-Faktor-Anmeldung zurücksetzen.
+\end{dshinweis}
+
+% ------------------------------------------------------------------
+\section{Eine neue Seite anlegen}
+
+Auf der Startseite oben auf \knopf{+ Neue Seite} klicken.
+
+\foto[0.55\textwidth]{v04_neue_seite_leer}{Das Formular für eine neue Seite}
+
+\begin{description}[style=nextline,leftmargin=0pt,itemsep=0.4\baselineskip]
+  \item[Titel] erscheint als Überschrift und in der Übersicht der Startseite.
+  \item[Datum] bestimmt die Reihenfolge auf der Startseite (neueste oben).
+    Vorgabe ist heute; für Termine besser das Datum der Veröffentlichung
+    lassen und den Termin im Text nennen.
+  \item[Sichtbar für] ist voreingestellt auf \stufe{Mitglieder}. Für alle sichtbar
+    wird eine Seite nur, wenn Sie bewusst \emph{Öffentlich (ohne Anmeldung)}
+    wählen.
+  \item[Inhalt] schreiben Sie im Editor wie in einer Textverarbeitung.
+  \item[Dateien und Bilder hinzufügen] öffnet die Dateiauswahl; mehrere
+    Dateien auf einmal sind möglich (je höchstens 20~MB).
+\end{description}
+
+\subsection{Der Editor}
+
+\foto[0.75\textwidth]{v05b_werkzeugleiste}{Werkzeugleiste des Editors}
+
+Von links: \emph{Rückgängig} und \emph{Wiederholen}; Absatzformat
+(\emph{Absatz}, \emph{Überschrift}, \emph{Unterüberschrift}, \emph{Zitat});
+\textbf{fett}, \emph{kursiv}, \underline{unterstrichen}; Aufzählung und
+nummerierte Liste; Link einfügen; Tabelle; Formatierung entfernen.
+
+\begin{itemize}
+  \item Text aus Word oder einer E-Mail kann eingefügt werden. Schriftarten,
+        Farben und Größen werden dabei entfernt, damit alle Seiten einheitlich
+        aussehen.
+  \item Bilder kommen nicht in den Text, sondern als Datei in den Bereich
+        \emph{Anhänge} (siehe unten).
+  \item Für Links die Adresse markieren lassen oder ein Wort markieren und
+        auf das Kettensymbol klicken.
+\end{itemize}
+
+\subsection{Dateien und Bilder}
+
+\begin{itemize}
+  \item \textbf{Dateien} (PDF, Word, Excel …) erscheinen unter der Seite als
+        Liste \emph{Anhänge}.
+  \item \textbf{Bilder} (JPG, PNG, WebP) erscheinen auf der Seite: das erste
+        als großes \emph{Titelbild} über dem Text (und als Vorschaubild auf der
+        Startseite), weitere als \emph{Galerie} darunter. Große Fotos werden
+        automatisch verkleinert, Standortangaben (GPS) entfernt.
+\end{itemize}
+
+\foto[0.55\textwidth]{v05_neue_seite_ausgefuellt}{Ausgefülltes Formular:
+  öffentliche Seite mit zwei Bildern und einem PDF}
+
+Nach \knopf{Speichern} sehen Sie die fertige Seite. Darunter stehen die
+Vorstandsfunktionen \emph{Bearbeiten · Versionsverlauf · Als Newsletter
+versenden · Löschen}.
+
+\foto[0.5\textwidth]{v06_seite_gespeichert}{Die gespeicherte Seite mit
+  Titelbild, Galerie und Anhang}
+
+\begin{dshinweis}[title=Fotos von Kindern und Jugendlichen]
+Fotos, auf denen Personen erkennbar sind, nur mit deren Einverständnis
+veröffentlichen, bei Kindern und Jugendlichen mit dem der Eltern. Im Zweifel
+die Seite nicht öffentlich, sondern für \stufe{Mitglieder} anlegen oder ein
+anderes Bild wählen.
+\end{dshinweis}
+
+% ------------------------------------------------------------------
+\section{Eine Seite ändern}
+
+Unter der Seite auf \emph{Bearbeiten} klicken. Es öffnet sich dasselbe Formular
+wie beim Anlegen. Im Bereich \emph{Anhänge} stehen jetzt die vorhandenen
+Dateien:
+
+\foto[0.8\textwidth]{v07_anhaenge}{Anhänge einer Seite bearbeiten}
+
+\begin{description}[style=nextline,leftmargin=0pt,itemsep=0.4\baselineskip]
+  \item[Bezeichnung / Bildunterschrift] Bei Dateien der Text, der statt des
+    Dateinamens in der Liste steht (z.\,B.\ \emph{Flyer zur Aktion (PDF)}); bei
+    Bildern die Bildunterschrift.
+  \item[Titelbild] Haken beim Bild, das oben groß stehen soll. Ohne Haken wird
+    das erste Bild Titelbild. Nur ein Titelbild ist möglich.
+  \item[Entfernen] Haken setzen, dann \knopf{Speichern}: die Datei wird gelöscht.
+\end{description}
+
+Neue Dateien fügen Sie wie beim Anlegen hinzu. Mit \emph{Abbrechen} verlassen Sie
+das Formular ohne Änderungen.
+
+% ------------------------------------------------------------------
+\section{Versionsverlauf}
+
+Jedes Speichern legt eine neue Fassung an. Unter der Seite öffnet
+\emph{Versionsverlauf} die Liste aller Fassungen mit Zeitpunkt und Person.
+
+\foto[0.62\textwidth]{v08_verlauf}{Versionsverlauf einer Seite}
+
+\emph{Ansehen und vergleichen} zeigt eine frühere Fassung: oben die
+Unterschiede zur aktuellen Fassung (grün: nur aktuell, rot: nur früher,
+gelb: geändert), darunter die Seite, wie sie damals aussah.
+
+\foto[0.55\textwidth]{v09_fassung}{Frühere Fassung: Uhrzeit von 14 auf 15 Uhr geändert}
+
+\knopf{Diese Fassung wiederherstellen} übernimmt Titel, Datum, Sichtbarkeit und
+Text der früheren Fassung. Die Anhänge bleiben, wie sie sind. Die bisherige
+Fassung geht dabei nicht verloren, sie bleibt im Verlauf.
+
+% ------------------------------------------------------------------
+\section{Eine Seite löschen}
+
+Unter der Seite auf \emph{Löschen} klicken und mit \knopf{Endgültig löschen}
+bestätigen. Dabei werden auch alle Anhänge der Seite gelöscht.
+
+\foto[0.62\textwidth]{v10_loeschen}{Rückfrage vor dem Löschen}
+
+\begin{dshinweis}[title=Lieber verstecken als löschen]
+Eine gelöschte Seite lässt sich auf der Webseite nicht zurückholen, nur die
+Betreuung kann sie aus der Datensicherung wiederherstellen. Soll eine Seite nur
+nicht mehr zu sehen sein, stellen Sie stattdessen \emph{Sichtbar für} auf
+\stufe{Vorstand}.
+\end{dshinweis}
+
+% ------------------------------------------------------------------
+\section{Newsletter}
+
+Jede Seite kann per E-Mail an die Personen verschickt werden, die sie sehen
+dürfen, beliebig oft. Typisch: die Einladung zur Mitgliederversammlung.
+
+\subsection{Versand vorbereiten}
+
+Unter der Seite auf \emph{Als Newsletter versenden} klicken.
+
+\foto[0.58\textwidth]{v11_newsletter_formular}{Newsletter vorbereiten}
+
+\begin{description}[style=nextline,leftmargin=0pt,itemsep=0.4\baselineskip]
+  \item[An] Zur Wahl stehen die Stufe der Seite und alle höheren. Mit den Haken
+    können Sie den Kreis einschränken, z.\,B.\ eine Information nur an den
+    Vorstand. Bei öffentlichen Seiten gibt es zusätzlich \emph{Konten ohne
+    Stufe}. Höhere Stufen erhalten die E-Mail zuerst.
+  \item[Inhalt] \emph{Seite in der E-Mail}: der ganze Text steht in der Mail.
+    \emph{Nur Vorschau und Link}: die ersten Zeilen und ein Knopf
+    \knopf{Weiterlesen}. Bei Seiten für Mitglieder ist dann zum Lesen eine
+    Anmeldung nötig; der Text verlässt den geschützten Bereich nicht.
+  \item[Ankündigung] Ein kurzer, optionaler Text, der über der Seite steht.
+  \item[Anhänge mitsenden] Dateien (keine Bilder) gehen als Anhang mit, solange
+    sie zusammen höchstens 8~MB groß sind; sonst stehen Links in der Mail.
+\end{description}
+
+Unter dem Formular steht, wie viele Personen den Newsletter erhalten und wer
+\textbf{keine E-Mail-Adresse} hat. Diese Personen müssen Sie auf anderem Weg
+benachrichtigen, z.\,B.\ per Brief.
+
+\subsection{Probe, Pause, Versand}
+
+Nach \knopf{Versand starten} geht die E-Mail zuerst \textbf{nur an Sie selbst}.
+Danach folgt eine Pause von 5~Minuten. Prüfen Sie in dieser Zeit die Mail in
+Ihrem Postfach.
+
+\foto[0.58\textwidth]{v12_newsletter_pause}{Die Probe ist verschickt, der Versand an alle wartet}
+
+\begin{itemize}
+  \item Alles in Ordnung: \knopf{Probe ist in Ordnung -- jetzt an alle senden}
+        (oder die Pause abwarten).
+  \item Fehler entdeckt: \knopf{Versand abbrechen}, die Seite korrigieren und
+        den Versand neu starten.
+\end{itemize}
+
+Danach geht jede E-Mail einzeln hinaus. Die Seite aktualisiert sich von selbst
+und zeigt für jede Person \emph{gesendet}, \emph{wartet}, \emph{Fehler} (mit
+Meldung) oder \emph{keine E-Mail-Adresse}. Abbrechen ist bis zur letzten Mail
+möglich; bereits verschickte Mails lassen sich nicht zurückholen.
+
+\foto[0.58\textwidth]{v13_newsletter_fertig}{Abgeschlossener Versand mit Protokoll}
+
+\subsection{Absender und Antworten}
+
+Absender ist die Person, die den Newsletter verschickt: mit ihrer Vereinsadresse,
+falls vorhanden, sonst \emph{Name (Förderverein KF/JF Kreuzau)} mit der Adresse
+der Webseite. Antworten gehen an diese Person und an die Vorstandsadresse.
+
+\subsection{Protokoll}
+
+\emph{Newsletter} in der Kopfzeile listet alle Versände mit Zeitpunkt, Seite,
+Absender und Status. Ein Klick auf den Zeitpunkt öffnet das Protokoll mit allen
+Empfängern. Es dient z.\,B.\ als Nachweis, wann und an wen die Einladung zur
+Mitgliederversammlung verschickt wurde (Satzung §\,7).
+
+\foto[0.6\textwidth]{v14_newsletter_uebersicht}{Übersicht aller Versände}
+
+% ------------------------------------------------------------------
+\section{Benutzer verwalten}
+
+Personen werden in der \emph{Verwaltung} gepflegt (Link oben rechts). Die
+Verwaltung sieht etwas anders aus als die Webseite.
+
+\foto[0.8\textwidth]{v15_verwaltung}{Startseite der Verwaltung}
+
+\subsection{Benutzerliste}
+
+\emph{Benutzer} zeigt alle Konten mit E-Mail-Adresse, Vereinsadresse, Stufe und
+letzter Anmeldung. Rechts filtern Sie nach Stufe oder nach aktiven Konten, oben
+suchen Sie nach Name oder Adresse.
+
+\foto[0.95\textwidth]{v16_benutzerliste}{Benutzerliste}
+
+\subsection{Person anlegen und einladen}
+
+\knopf{Benutzer hinzufügen} (oben rechts in der Liste):
+
+\foto[0.8\textwidth]{v17_benutzer_anlegen}{Neue Person anlegen}
+
+\begin{description}[style=nextline,leftmargin=0pt,itemsep=0.4\baselineskip]
+  \item[Benutzername, Vorname, Nachname] Benutzername klein und ohne Umlaute,
+    z.\,B.\ \emph{vorname.nachname}. Anmelden kann man sich auch mit der
+    E-Mail-Adresse.
+  \item[E-Mail-Adresse] die private (externe) Adresse. Pflicht; an sie gehen
+    Einladung und \emph{Passwort vergessen}. Jede Adresse kann nur zu einem
+    Konto gehören.
+  \item[Stufe] meist genau eine. \stufe{Vorstand} gibt Bearbeitungsrechte und
+    macht die Zwei-Faktor-Anmeldung zur Pflicht.
+  \item[Einladung sofort per E-Mail senden] ist angehakt: Nach dem Speichern
+    erhält die Person eine Einladung mit einem Link, über den sie ihr Passwort
+    selbst festlegt (7~Tage gültig).
+  \item[Postfach und Vereinsmails] nur ausfüllen, wenn die Person eine
+    Vereinsadresse (Postfach) hat; sonst leer lassen.
+\end{description}
+
+Mit \knopf{Sichern} wird das Konto angelegt und die Einladung verschickt.
+Oben erscheint die Bestätigung \emph{Einladung an … gesendet}.
+
+\subsection{Einladung erneut senden}
+
+Ist der Link abgelaufen oder die Mail nicht angekommen: in der Benutzerliste
+die Personen ankreuzen, bei \emph{Aktion} \emph{Einladung (erneut) senden}
+wählen und \knopf{Ausführen} klicken.
+
+\foto[0.5\textwidth]{v20_aktion_einladen}{Einladung an ausgewählte Personen senden}
+
+\foto[0.6\textwidth]{v21_einladung_meldungen}{Rückmeldung: eine Einladung
+  gesendet, eine Person ohne E-Mail-Adresse}
+
+Der Vorstand kann keine Passwörter setzen oder ansehen. Hat jemand sein
+Passwort vergessen, hilft \emph{Passwort vergessen} auf der Anmeldeseite oder
+eine neue Einladung.
+
+\subsection{Person ändern}
+
+Ein Klick auf den Benutzernamen öffnet das Konto. Hier ändern Sie Name,
+E-Mail-Adresse, Stufe und die Angaben zum Postfach.
+
+\foto[0.75\textwidth]{v19_benutzer_bearbeiten}{Konto einer Person mit Vereinsadresse}
+
+\begin{itemize}
+  \item \textbf{Stufe wechseln}, etwa vom Fördermitglied zum Mitglied: Haken
+        umsetzen und \knopf{Sichern}.
+  \item \textbf{Ausgeschieden}: den Haken bei \emph{Aktiv} entfernen statt das
+        Konto zu löschen. Die Person kann sich nicht mehr anmelden und erhält
+        keine Newsletter; Verlauf und Protokolle bleiben vollständig.
+  \item \textbf{Löschen} (rot, unten rechts) nur, wenn ein Konto versehentlich
+        angelegt wurde oder die Person die Löschung ihrer Daten verlangt.
+\end{itemize}
+
+% ------------------------------------------------------------------
+\section{Häufige Fragen}
+
+\begin{description}[style=nextline,leftmargin=0pt,itemsep=0.6\baselineskip]
+  \item[Ein Mitglied sieht eine Seite nicht.]
+    \emph{Sichtbar für} der Seite und die Stufe der Person (Verwaltung)
+    vergleichen. Ist die Person angemeldet?
+  \item[Eine Seite war versehentlich öffentlich.]
+    \emph{Sichtbar für} ändern und speichern. Ein bereits verschickter
+    Newsletter lässt sich nicht zurückholen.
+  \item[Ich habe etwas falsch geändert.]
+    \emph{Versionsverlauf} öffnen und die vorige Fassung wiederherstellen.
+  \item[Die Einladung kam nicht an.]
+    E-Mail-Adresse in der Verwaltung prüfen, Person in den Spam-Ordner schauen
+    lassen, Einladung erneut senden.
+  \item[Im Newsletter-Protokoll steht „Fehler“.]
+    Die Meldung daneben nennt den Grund, oft eine falsche oder volle Adresse.
+    Adresse in der Verwaltung korrigieren und die Person auf anderem Weg
+    informieren, z.\,B.\ mit einer kurzen E-Mail von Hand.
+  \item[Die Statusseite meldet „Der Versanddienst meldet sich nicht“.]
+    Dann verschickt der Server gerade keine Mails. Bitte die Betreuung
+    informieren.
+  \item[Smartphone mit der Authenticator-App verloren.]
+    Mit einem Wiederherstellungscode anmelden und die App neu einrichten;
+    ohne Codes die Betreuung bitten, die Zwei-Faktor-Anmeldung zurückzusetzen.
+\end{description}
+
+% ------------------------------------------------------------------
+\section{Was die Betreuung der Webseite übernimmt}
+
+Einige Einstellungen sind bewusst nur für Administratoren erreichbar:
+
+\begin{itemize}
+  \item \textbf{Stufen}: anlegen, umbenennen, festlegen, welche Stufe bearbeiten darf,
+  \item \textbf{Einstellungen der Webseite}: Name, Slogan, Fußzeile,
+        Antwortadresse für Newsletter,
+  \item Server, Updates, Datensicherung, Wiederherstellen gelöschter Seiten,
+  \item Zurücksetzen der Zwei-Faktor-Anmeldung.
+\end{itemize}
+
+{\small\color{dsgrau} Die Bildschirmfotos stammen aus einer Testinstallation
+mit Beispieldaten; Personen, Seiten und Bilder sind erfunden. Die Beschriftung
+der Dateiauswahl (\emph{Choose Files}) erscheint in Ihrem Browser auf Deutsch.}
+
+\end{document}

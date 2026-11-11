@@ -11,19 +11,19 @@ from django.urls import reverse
 
 from seiten import rechte
 from seiten.models import Anhang, Seite
-from seiten.stufen import Stufe
+from tests.hilfen import FOERDERMITGLIEDER, MITGLIEDER, OEFFENTLICH, RANG, STUFEN, VORSTAND, stufe as S
 
 pytestmark = pytest.mark.django_db
 
-# Benutzerart -> höchste Stufe, die er sehen darf
+# Benutzerart -> Rang der höchsten Stufe, die er sehen darf
 BENUTZERARTEN = {
-    "anonym": Stufe.OEFFENTLICH,
-    "ohne_gruppe": Stufe.OEFFENTLICH,
-    "foerdermitglied": Stufe.FOERDERMITGLIEDER,
-    "mitglied": Stufe.MITGLIEDER,
-    "vorstand": Stufe.VORSTAND,
-    "superuser": Stufe.VORSTAND,
-    "deaktiviert": Stufe.OEFFENTLICH,  # war Vorstand, Konto deaktiviert
+    "anonym": RANG[OEFFENTLICH],
+    "ohne_gruppe": RANG[OEFFENTLICH],
+    "foerdermitglied": RANG[FOERDERMITGLIEDER],
+    "mitglied": RANG[MITGLIEDER],
+    "vorstand": RANG[VORSTAND],
+    "superuser": rechte._ADMIN_RANG,
+    "deaktiviert": RANG[OEFFENTLICH],  # war Vorstand, Konto deaktiviert
 }
 GRUPPE = {
     "foerdermitglied": "Fördermitglieder",
@@ -48,10 +48,10 @@ def benutzer(art):
 @pytest.fixture
 def seiten():
     erg = {}
-    for stufe in Stufe:
-        s = Seite.objects.create(titel=f"Seite {stufe.label}", stufe=stufe,
-                                 inhalt=f"<p>Inhalt {stufe.label}</p>")
-        a = Anhang(seite=s, bezeichnung=f"Anhang {stufe.label}")
+    for stufe in STUFEN:
+        s = Seite.objects.create(titel=f"Seite {stufe}", stufe=S(stufe),
+                                 inhalt=f"<p>Inhalt {stufe}</p>")
+        a = Anhang(seite=s, bezeichnung=f"Anhang {stufe}")
         a.datei.save("einladung.pdf", ContentFile(b"%PDF-1.4 test"), save=False)
         a.save()
         erg[stufe] = (s, a)
@@ -71,12 +71,12 @@ def test_stufe_von(art, max_stufe):
 
 
 @pytest.mark.parametrize("art,max_stufe", BENUTZERARTEN.items())
-@pytest.mark.parametrize("stufe", list(Stufe))
+@pytest.mark.parametrize("stufe", STUFEN)
 def test_seite_und_anhang(client, seiten, art, max_stufe, stufe):
     u = benutzer(art)
     c = client_fuer(client, u)
     seite, anhang = seiten[stufe]
-    erlaubt = max_stufe >= stufe
+    erlaubt = max_stufe >= RANG[stufe]
 
     r_seite = c.get(reverse("seite", args=[seite.pk]))
     r_anhang = c.get(reverse("anhang", args=[anhang.pk]))
@@ -102,28 +102,28 @@ def test_startseite_zeigt_nur_sichtbare(client, seiten, art, max_stufe):
     c = client_fuer(client, benutzer(art))
     html = c.get(reverse("startseite")).content.decode()
     for stufe, (seite, _) in seiten.items():
-        assert (seite.titel in html) == (max_stufe >= stufe), (art, stufe)
+        assert (seite.titel in html) == (max_stufe >= RANG[stufe]), (art, stufe)
 
 
 def test_mehrere_gruppen_hoechste_zaehlt():
     u = benutzer("foerdermitglied")
     u.groups.add(Group.objects.get(name="Mitglieder"))
-    assert rechte.stufe_von(u) == Stufe.MITGLIEDER
+    assert rechte.stufe_von(u) == RANG[MITGLIEDER]
 
 
 def test_startseite_nach_datum_absteigend(client):
     from datetime import date
-    Seite.objects.create(titel="Alt", stufe=Stufe.OEFFENTLICH, datum=date(2025, 1, 1))
-    Seite.objects.create(titel="Neu", stufe=Stufe.OEFFENTLICH, datum=date(2026, 1, 1))
+    Seite.objects.create(titel="Alt", stufe=None, datum=date(2025, 1, 1))
+    Seite.objects.create(titel="Neu", stufe=None, datum=date(2026, 1, 1))
     html = client.get(reverse("startseite")).content.decode()
     assert html.index("Neu") < html.index("Alt")
 
 
 @pytest.mark.parametrize("stufe,erwartet", [
-    (Stufe.OEFFENTLICH, {"ohne_gruppe", "foerdermitglied", "mitglied", "vorstand", "superuser"}),
-    (Stufe.FOERDERMITGLIEDER, {"foerdermitglied", "mitglied", "vorstand", "superuser"}),
-    (Stufe.MITGLIEDER, {"mitglied", "vorstand", "superuser"}),
-    (Stufe.VORSTAND, {"vorstand", "superuser"}),
+    (OEFFENTLICH, {"ohne_gruppe", "foerdermitglied", "mitglied", "vorstand", "superuser"}),
+    (FOERDERMITGLIEDER, {"foerdermitglied", "mitglied", "vorstand", "superuser"}),
+    (MITGLIEDER, {"mitglied", "vorstand", "superuser"}),
+    (VORSTAND, {"vorstand", "superuser"}),
 ])
 def test_newsletter_empfaenger(stufe, erwartet):
     for art in BENUTZERARTEN:
@@ -131,11 +131,11 @@ def test_newsletter_empfaenger(stufe, erwartet):
     ohne_mail = User.objects.create_user("ohnemail", "", "pw")
     ohne_mail.groups.add(Group.objects.get(name="Mitglieder"))
 
-    seite = Seite.objects.create(titel="Einladung", stufe=stufe)
+    seite = Seite.objects.create(titel="Einladung", stufe=S(stufe))
     mit, ohne = rechte.newsletter_empfaenger(seite)
 
     assert set(mit.values_list("username", flat=True)) == erwartet
-    if stufe <= Stufe.MITGLIEDER:
+    if RANG[stufe] <= RANG[MITGLIEDER]:
         assert list(ohne.values_list("username", flat=True)) == ["ohnemail"]
     else:
         assert not ohne.exists()
@@ -144,7 +144,7 @@ def test_newsletter_empfaenger(stufe, erwartet):
 def test_benutzer_in_mehreren_gruppen_nur_einmal_empfaenger():
     u = benutzer("vorstand")
     u.groups.add(Group.objects.get(name="Mitglieder"))
-    seite = Seite.objects.create(titel="Info", stufe=Stufe.FOERDERMITGLIEDER)
+    seite = Seite.objects.create(titel="Info", stufe=S(FOERDERMITGLIEDER))
     mit, _ = rechte.newsletter_empfaenger(seite)
     assert list(mit.values_list("username", flat=True)) == ["vorstand"]
 

@@ -1,7 +1,8 @@
 from django import forms
 from django.forms import BaseInlineFormSet, inlineformset_factory
 
-from .models import Anhang, Seite
+from .models import Anhang, Seite, Stufe
+from .stufen import OEFFENTLICH
 
 
 class SeiteForm(forms.ModelForm):
@@ -13,6 +14,14 @@ class SeiteForm(forms.ModelForm):
             "inhalt": forms.Textarea(attrs={"rows": 20, "data-editor": "tinymce"}),
         }
         labels = {"titel": "Titel", "datum": "Datum", "inhalt": "Inhalt"}
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        feld = self.fields["stufe"]
+        feld.queryset = Stufe.objects.order_by("rang")
+        feld.empty_label = f"{OEFFENTLICH} (ohne Anmeldung)"
+        if not self.instance.pk and "stufe" not in self.initial:
+            self.initial["stufe"] = Stufe.voreinstellung()
 
 
 class MehrereDateienWidget(forms.ClearableFileInput):

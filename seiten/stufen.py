@@ -1,16 +1,7 @@
-from django.db import models
+"""Stufen: feste Bezeichnung der untersten Stufe.
 
+Die übrigen Stufen sind frei anlegbar (Modell seiten.models.Stufe, Verwaltung).
+"""
 
-class Stufe(models.IntegerChoices):
-    OEFFENTLICH = 0, "Öffentlich"
-    FOERDERMITGLIEDER = 1, "Fördermitglieder"
-    MITGLIEDER = 2, "Mitglieder"
-    VORSTAND = 3, "Vorstand"
-
-
-# Name der Django-Gruppe -> Stufe. Die Gruppen werden per Migration angelegt.
-GRUPPE_ZU_STUFE = {
-    "Fördermitglieder": Stufe.FOERDERMITGLIEDER,
-    "Mitglieder": Stufe.MITGLIEDER,
-    "Vorstand": Stufe.VORSTAND,
-}
+OEFFENTLICH = "Öffentlich"     # ohne Anmeldung; Seiten ohne Stufe
+OEFFENTLICH_RANG = 0

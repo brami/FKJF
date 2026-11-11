@@ -60,6 +60,36 @@ Tests: `python -m pytest`
   ändern, niemanden zum Administrator machen und keine fremden Passwörter setzen.
 - Erstes Vorstandskonto auf dem Server: `sudo fv-manage vorstand_anlegen <name> <e-mail> --admin`
 
+## Postfach und Passwörter
+
+Passwörter werden mit **Argon2id** gespeichert (`seiten/passwort.py`), in einem Format,
+das auch **Dovecot** prüfen kann. Damit gibt es für Konten mit Postfach nur **ein**
+Passwort für Webseite und Mail, verwaltet auf der Webseite (Einladung, ändern, vergessen).
+
+- Jedes Konto hat eine **externe Adresse** (`E-Mail-Adresse`): für „Passwort vergessen“,
+  Einladungen und – nach Wahl – Vereinsmails.
+- Konten mit Postfach haben zusätzlich eine **Vereinsadresse** (Verwaltung → Benutzer →
+  „Postfach und Vereinsmails“). Anmelden geht auch damit. „Passwort vergessen“ mit der
+  Vereinsadresse schickt den Link trotzdem an die externe Adresse.
+- Wohin **Vereinsmails** (z. B. Newsletter) gehen, wählt jede Person unter „Mein Konto“
+  (Standard: externe Adresse).
+- Konten mit Postfach brauchen ein Passwort mit mindestens 12 Zeichen (Mail hat keine
+  Zwei-Faktor-Anmeldung).
+
+**Für Dovecot** (gleicher Server) gibt es in PostgreSQL die Sicht `dovecot_benutzer`
+mit den Spalten `benutzer` (Vereinsadresse, klein geschrieben), `passwort`
+(`{ARGON2ID}$argon2id$…`) und `aktiv`. Die Datenbankrolle `dovecot` (Anmeldung nur lokal
+über den Socket als Systembenutzer `dovecot`) darf nur diese Sicht lesen. Abfrage für
+die Passwortprüfung:
+
+```sql
+SELECT benutzer AS "user", passwort AS password
+  FROM dovecot_benutzer WHERE benutzer = lower('<anmeldename>') AND aktiv
+```
+
+Die Dovecot-Konfiguration (Debian 13: Dovecot 2.4) folgt mit der Einrichtung des
+Mailservers. Vorher auf dem Server prüfen: `doveadm pw -l` muss `ARGON2ID` enthalten.
+
 ## Installation auf dem Server
 
 Das Skript `deploy/setup-server-fv-web.sh` richtet einen Debian-13-vServer per SSH ein

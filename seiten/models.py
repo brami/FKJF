@@ -178,3 +178,56 @@ def _anhang_datei_loeschen(sender, instance, **kwargs):
         for feld in (instance.datei, instance.bild, instance.vorschaubild):
             if feld:
                 feld.delete(save=False)
+
+
+class Profil(models.Model):
+    """Zusätzliche Angaben zu einem Konto: Vereinsadresse (Postfach) und Zustellung.
+
+    Die externe Adresse ist User.email. Sie ist immer vorhanden und wird für
+    „Passwort vergessen“ und Einladungen verwendet. Die Vereinsadresse gibt es nur
+    bei Konten mit Postfach auf dem Mailserver des Vereins; dessen Passwort ist das
+    der Webseite (Dovecot liest die Sicht „dovecot_benutzer“).
+    """
+
+    class Zustellung(models.TextChoices):
+        EXTERN = "extern", "an die externe Adresse"
+        VEREIN = "verein", "an die Vereinsadresse"
+
+    user = models.OneToOneField(settings.AUTH_USER_MODEL, on_delete=models.CASCADE,
+                                related_name="profil")
+    vereins_email = models.EmailField(
+        "Vereinsadresse (Postfach)", blank=True, null=True, unique=True,
+        help_text="Nur bei Konten mit Postfach auf dem Mailserver des Vereins. "
+                  "Anmelden geht auch mit dieser Adresse.",
+    )
+    zustellung = models.CharField(
+        "Vereinsmails (z. B. Newsletter)", max_length=10,
+        choices=Zustellung.choices, default=Zustellung.EXTERN,
+        help_text="„Passwort vergessen“ und Einladungen gehen immer an die externe Adresse.",
+    )
+
+    class Meta:
+        verbose_name = "Profil"
+        verbose_name_plural = "Profile"
+
+    def __str__(self):
+        return f"Profil von {self.user}"
+
+    def save(self, *args, **kwargs):
+        self.vereins_email = (self.vereins_email or "").strip().lower() or None
+        if not self.vereins_email:
+            self.zustellung = self.Zustellung.EXTERN
+        super().save(*args, **kwargs)
+
+
+def profil_von(user) -> "Profil":
+    profil, _ = Profil.objects.get_or_create(user=user)
+    return profil
+
+
+def zustelladresse(user) -> str:
+    """Adresse für Vereinsmails (Newsletter): nach Wahl der Person."""
+    profil = getattr(user, "profil", None)
+    if profil and profil.vereins_email and profil.zustellung == Profil.Zustellung.VEREIN:
+        return profil.vereins_email
+    return user.email

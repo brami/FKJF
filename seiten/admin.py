@@ -17,7 +17,7 @@ from simple_history.admin import SimpleHistoryAdmin
 
 from . import rechte
 from .konto import mails_werden_verschickt, sende_einladung
-from .models import Anhang, Seite
+from .models import Anhang, Profil, Seite
 from .stufen import GRUPPE_ZU_STUFE
 
 User = get_user_model()
@@ -69,11 +69,40 @@ class EindeutigeEmail:
     def clean_email(self):
         email = (self.cleaned_data.get("email") or "").strip()
         andere = User.objects.filter(email__iexact=email)
+        vereinsadressen = Profil.objects.filter(vereins_email__iexact=email)
         if self.instance.pk:
             andere = andere.exclude(pk=self.instance.pk)
-        if email and andere.exists():
+        if email and (andere.exists() or vereinsadressen.exists()):
             raise forms.ValidationError("Diese E-Mail-Adresse gehört bereits zu einem anderen Konto.")
         return email
+
+
+class ProfilForm(forms.ModelForm):
+    class Meta:
+        model = Profil
+        fields = ["vereins_email", "zustellung"]
+
+    def clean_vereins_email(self):
+        adresse = (self.cleaned_data.get("vereins_email") or "").strip().lower() or None
+        if adresse and User.objects.filter(email__iexact=adresse).exists():
+            raise forms.ValidationError(
+                "Diese Adresse ist bereits als externe Adresse eingetragen. Die Vereinsadresse "
+                "muss sich von allen externen Adressen unterscheiden.")
+        return adresse
+
+
+class ProfilInline(admin.StackedInline):
+    model = Profil
+    form = ProfilForm
+    can_delete = False
+    max_num = 1
+    verbose_name = "Postfach und Vereinsmails"
+    verbose_name_plural = "Postfach und Vereinsmails"
+
+    def has_view_permission(self, request, obj=None):
+        return rechte.darf_bearbeiten(request.user)
+
+    has_add_permission = has_change_permission = has_view_permission
 
 
 class BenutzerAnlegenForm(EindeutigeEmail, forms.ModelForm):
@@ -130,23 +159,32 @@ admin.site.unregister(Group)  # die Gruppen sind fest vorgegeben (Migration)
 
 @admin.register(User)
 class BenutzerAdmin(NurVorstand, UserAdmin):
+    inlines = [ProfilInline]
     add_form = BenutzerAnlegenForm
     form = BenutzerAendernForm
     add_fieldsets = ((None, {"fields": ("username", "first_name", "last_name", "email",
                                         "groups", "einladen")}),)
-    list_display = ("username", "first_name", "last_name", "email", gruppen, "is_active", "last_login")
+    list_display = ("username", "first_name", "last_name", "email", "vereinsadresse", gruppen,
+                    "is_active", "last_login")
     list_filter = ("groups", "is_active")
     search_fields = ("username", "first_name", "last_name", "email")
     ordering = ("last_name", "first_name", "username")
     readonly_fields = ("last_login", "date_joined")
     actions = ["einladung_senden"]
 
+    @admin.display(description="Vereinsadresse")
+    def vereinsadresse(self, user):
+        profil = getattr(user, "profil", None)
+        return (profil.vereins_email if profil else None) or "–"
+
     def get_fieldsets(self, request, obj=None):
         if obj is None:
             return self.add_fieldsets
         felder = [
             (None, {"fields": ("username",)}),
-            ("Person", {"fields": ("first_name", "last_name", "email")}),
+            ("Person", {"fields": ("first_name", "last_name", "email"),
+                        "description": "E-Mail-Adresse = externe Adresse: für „Passwort vergessen“, "
+                                       "Einladungen und – je nach Einstellung – Vereinsmails."}),
             ("Zugang", {"fields": ("is_active", "groups"),
                         "description": "Deaktivierte Konten können sich nicht anmelden "
                                        "und erhalten keine Newsletter."}),
@@ -157,7 +195,7 @@ class BenutzerAdmin(NurVorstand, UserAdmin):
         return felder
 
     def get_queryset(self, request):
-        qs = super().get_queryset(request).prefetch_related("groups")
+        qs = super().get_queryset(request).prefetch_related("groups").select_related("profil")
         # Der Vorstand sieht und ändert keine Administratorkonten
         return qs if request.user.is_superuser else qs.filter(is_superuser=False)
 

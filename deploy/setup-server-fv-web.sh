@@ -501,7 +501,7 @@ EOF
   ensure_kv "$ENVF" FV_ADMIN_PFAD "verwaltung/"
   ensure_kv "$ENVF" FV_MAIL "datei"
   ensure_kv "$ENVF" FV_MAIL_DATEIEN "$DATA/mails"
-  ensure_kv "$ENVF" FV_MAIL_ABSENDER "Förderverein KF/JF Kreuzau <webmaster@$DOMAIN>"
+  ensure_kv "$ENVF" FV_MAIL_ABSENDER "webmaster@$DOMAIN"   # Absendername = Name der Webseite
   ensure_kv "$ENVF" FV_SMTP_HOST ""
   ensure_kv "$ENVF" FV_SMTP_PORT "587"
   ensure_kv "$ENVF" FV_SMTP_USER ""

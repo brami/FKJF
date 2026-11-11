@@ -17,7 +17,7 @@ from simple_history.admin import SimpleHistoryAdmin
 
 from . import rechte
 from .konto import mails_werden_verschickt, sende_einladung
-from .models import Anhang, Profil, Seite, Stufe
+from .models import Anhang, Profil, Seite, Stufe, Webseite
 
 User = get_user_model()
 
@@ -263,3 +263,33 @@ class StufeAdmin(admin.ModelAdmin):
     @admin.display(description="Personen")
     def anzahl_personen(self, obj):
         return obj.gruppe.user_set.count()
+
+
+@admin.register(Webseite)
+class WebseiteAdmin(admin.ModelAdmin):
+    """Name und feste Texte der Webseite – genau ein Eintrag, nur für Administratoren."""
+
+    def _admin(self, request):
+        return request.user.is_active and request.user.is_superuser
+
+    def has_module_permission(self, request):
+        return self._admin(request)
+
+    def has_view_permission(self, request, obj=None):
+        return self._admin(request)
+
+    def has_change_permission(self, request, obj=None):
+        return self._admin(request)
+
+    def has_add_permission(self, request):
+        return False
+
+    def has_delete_permission(self, request, obj=None):
+        return False
+
+    def changelist_view(self, request, extra_context=None):
+        # Keine Liste: direkt zum einzigen Eintrag
+        from django.shortcuts import redirect
+        if not self._admin(request):
+            raise PermissionDenied
+        return redirect("admin:seiten_webseite_change", Webseite.aktuell().pk)

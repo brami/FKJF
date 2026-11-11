@@ -8,6 +8,7 @@ from allauth.account.forms import ResetPasswordForm
 from allauth.account.internal.flows.login import get_authentication_records
 from allauth.account.forms import default_token_generator
 from allauth.account.utils import user_pk_to_url_str
+from allauth.mfa.adapter import DefaultMFAAdapter
 from allauth.mfa.utils import is_mfa_enabled
 from django.conf import settings
 from django import forms
@@ -15,6 +16,7 @@ from django.contrib import messages
 from django.contrib.auth.backends import ModelBackend
 from django.contrib.auth.decorators import login_required
 from django.core.mail import send_mail
+from email.utils import formataddr, parseaddr
 from django.shortcuts import redirect, render
 from django.template.loader import render_to_string
 from django.urls import reverse
@@ -22,7 +24,28 @@ from django.urls import reverse
 from . import rechte
 
 
+def webseite():
+    from .models import Webseite
+    return Webseite.aktuell()
+
+
+def betreff(text: str) -> str:
+    return f"[{webseite().name}] {text}"
+
+
+def absender() -> str:
+    """Absender der E-Mails. Ohne Namen in FV_MAIL_ABSENDER wird der Name der Webseite ergänzt."""
+    name, adresse = parseaddr(settings.DEFAULT_FROM_EMAIL)
+    return settings.DEFAULT_FROM_EMAIL if name else formataddr((webseite().name, adresse))
+
+
 class KontoAdapter(DefaultAccountAdapter):
+    def format_email_subject(self, subject):
+        return betreff(str(subject))
+
+    def get_from_email(self):
+        return absender()
+
     def is_open_for_signup(self, request):
         """Keine Selbstregistrierung: Konten legt der Vorstand an."""
         return False
@@ -48,6 +71,11 @@ class KontoAdapter(DefaultAccountAdapter):
         if not records:
             return False
         return time.time() - records[-1]["at"] < account_settings.REAUTHENTICATION_TIMEOUT
+
+
+class MfaAdapter(DefaultMFAAdapter):
+    def get_totp_issuer(self):
+        return webseite().name
 
 
 # ------------------------------------------------- Vereinsadresse (Postfach)
@@ -106,11 +134,12 @@ def sende_einladung(user) -> str:
     """Schickt die Einladung per E-Mail und gibt den Link zurück."""
     link = einladungs_link(user)
     tage = settings.PASSWORD_RESET_TIMEOUT // 86400
-    ctx = {"user": user, "link": link, "tage": tage, "basis": settings.FV_BASIS_URL}
+    ctx = {"user": user, "link": link, "tage": tage, "basis": settings.FV_BASIS_URL,
+           "webseite": webseite()}
     send_mail(
-        subject=settings.ACCOUNT_EMAIL_SUBJECT_PREFIX + "Einladung zur Webseite",
+        subject=betreff("Einladung zur Webseite"),
         message=render_to_string("konto/einladung.txt", ctx),
-        from_email=None,
+        from_email=absender(),
         recipient_list=[user.email],
     )
     return link
@@ -182,5 +211,8 @@ def konto(request):
 
 
 def kontext(request):
-    """Kontextprozessor: Darf die angemeldete Person bearbeiten (Vorstand)?"""
-    return {"fv_darf_bearbeiten": rechte.darf_bearbeiten(getattr(request, "user", None))}
+    """Kontextprozessor: Einstellungen der Webseite; darf die angemeldete Person bearbeiten?"""
+    return {
+        "fv_darf_bearbeiten": rechte.darf_bearbeiten(getattr(request, "user", None)),
+        "fv_webseite": webseite(),
+    }

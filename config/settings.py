@@ -1,4 +1,4 @@
-"""Einstellungen der Webseite des Fördervereins KF/JF Kreuzau.
+"""Einstellungen der Webseite (Name und Texte: Verwaltung → Einstellungen der Webseite).
 
 Alle umgebungsabhängigen Werte kommen aus Umgebungsvariablen (auf dem Server aus
 /etc/fv-web/env, siehe Betriebshandbuch). Ohne Variablen startet eine lokale
@@ -133,11 +133,10 @@ ACCOUNT_EMAIL_VERIFICATION = "none"
 ACCOUNT_UNIQUE_EMAIL = True           # nötig für die Anmeldung mit der E-Mail-Adresse
 ACCOUNT_LOGOUT_ON_PASSWORD_CHANGE = False
 ACCOUNT_LOGIN_ON_PASSWORD_RESET = False
-ACCOUNT_EMAIL_SUBJECT_PREFIX = "[Förderverein KF/JF Kreuzau] "
 ACCOUNT_PASSWORD_INPUT_RENDER_VALUE = False
 ACCOUNT_EMAIL_UNKNOWN_ACCOUNTS = False   # keine Mail mit Registrierungsangebot an unbekannte Adressen
 MFA_SUPPORTED_TYPES = ["totp", "recovery_codes"]
-MFA_TOTP_ISSUER = "Förderverein KF/JF Kreuzau"
+MFA_ADAPTER = "seiten.konto.MfaAdapter"   # Name in der Authenticator-App = Name der Webseite
 # Zwei-Faktor-Anmeldung ist für den Vorstand (und Administratoren) Pflicht
 FV_ZWEI_FAKTOR_PFLICHT = env_bool("FV_ZWEI_FAKTOR_PFLICHT", True)
 
@@ -226,7 +225,8 @@ elif FV_MAIL == "datei":
     SILENCED_SYSTEM_CHECKS = ["mail.E001"]
 else:
     MAILERS = {"default": {"BACKEND": "django.core.mail.backends.console.EmailBackend"}}
-DEFAULT_FROM_EMAIL = env("FV_MAIL_ABSENDER", "Förderverein KF/JF Kreuzau <webmaster@localhost>")
+# Ohne Namen (nur Adresse) wird der Name der Webseite als Absendername ergänzt
+DEFAULT_FROM_EMAIL = env("FV_MAIL_ABSENDER", "webmaster@localhost")
 SERVER_EMAIL = DEFAULT_FROM_EMAIL
 ADMINS = [a for a in env("FV_ADMINS", "").split(",") if a]
 # Basis-Adresse für Links in E-Mails und Befehlen, z. B. https://foerderverein-kf-jf-kreuzau.de

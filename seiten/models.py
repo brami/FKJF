@@ -103,6 +103,52 @@ class Stufe(models.Model):
         return cls.objects.filter(darf_bearbeiten=False).order_by("-rang").first()
 
 
+class Webseite(models.Model):
+    """Name und feste Texte der Webseite (genau ein Eintrag, Pflege durch Administratoren).
+
+    Damit lässt sich die Anwendung ohne Änderung am Quellcode für andere Vereine
+    oder Zwecke verwenden.
+    """
+
+    name = models.CharField(
+        max_length=100, default="Meine Webseite",
+        help_text="Kopfzeile, Fenstertitel, Betreff der E-Mails, Eintrag in der Authenticator-App.",
+    )
+    slogan = models.CharField(max_length=200, blank=True, help_text="Unter dem Namen in der Kopfzeile.")
+    inhaber = models.CharField(
+        "Inhaber", max_length=200, blank=True,
+        help_text="Vollständiger Name für die Fußzeile (© …), z. B. mit „e. V.“. Leer = Name.",
+    )
+    ansprechpartner = models.CharField(
+        "Ansprechpartner", max_length=100, default="den Vorstand",
+        help_text="Ergänzt „Für ein Konto wenden Sie sich bitte an …“, z. B. „den Vorstand“.",
+    )
+    unterschrift = models.CharField(
+        max_length=100, default="Der Vorstand",
+        help_text="Unter den E-Mails, z. B. der Einladung.",
+    )
+
+    class Meta:
+        verbose_name = "Einstellungen der Webseite"
+        verbose_name_plural = "Einstellungen der Webseite"
+
+    def __str__(self):
+        return self.name
+
+    def save(self, *args, **kwargs):
+        self.pk = 1   # immer genau ein Eintrag
+        super().save(*args, **kwargs)
+
+    @classmethod
+    def aktuell(cls):
+        obj, _ = cls.objects.get_or_create(pk=1)
+        return obj
+
+    @property
+    def fuss(self):
+        return self.inhaber or self.name
+
+
 class Seite(models.Model):
     titel = models.CharField(max_length=200)
     datum = models.DateField(default=timezone.localdate)

@@ -1,11 +1,11 @@
 {% extends "account/base_entrance.html" %}
-{% comment %}Anmeldung ohne Hinweis auf eine Registrierung (Konten legt der Vorstand an).{% endcomment %}
+{% comment %}Anmeldung ohne Hinweis auf eine Registrierung (Konten werden in der Verwaltung angelegt).{% endcomment %}
 {% load i18n %}
 {% load allauth account %}
 {% block head_title %}Anmelden{% endblock head_title %}
 {% block content %}
     {% element h1 %}Anmelden{% endelement %}
-    {% element p %}Mit Benutzername oder E-Mail-Adresse. Ein Konto erhalten Sie vom Vorstand.{% endelement %}
+    {% element p %}Mit Benutzername oder E-Mail-Adresse. Für ein Konto wenden Sie sich bitte an {{ fv_webseite.ansprechpartner }}.{% endelement %}
     {% url 'account_login' as login_url %}
     {% element form form=form method="post" action=login_url tags="entrance,login" %}
         {% slot body %}

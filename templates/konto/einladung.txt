@@ -1,7 +1,6 @@
 {% autoescape off %}Hallo {{ user.get_full_name|default:user.username }},
 
-der Vorstand des Fördervereins der Kinder- und Jugendfeuerwehr Kreuzau hat für Sie
-ein Konto auf der Webseite angelegt:
+für Sie wurde ein Konto auf der Webseite „{{ webseite.name }}“ angelegt:
 
     {{ basis }}
 
@@ -17,5 +16,5 @@ Ist der Link abgelaufen, können Sie auf der Anmeldeseite jederzeit über
 „Passwort vergessen?“ einen neuen anfordern.
 
 Mit freundlichen Grüßen
-Der Vorstand
+{{ webseite.unterschrift }}
 {% endautoescape %}

@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 
-{% block titel %}Mein Konto – Förderverein KF/JF Kreuzau{% endblock %}
+{% block titel %}Mein Konto – {{ fv_webseite.name }}{% endblock %}
 {% block robots %}<meta name="robots" content="noindex">{% endblock %}
 
 {% block inhalt %}
@@ -13,7 +13,7 @@
     {% if profil.vereins_email %}<tr><th>Vereinsadresse (Postfach)</th><td>{{ profil.vereins_email }}</td></tr>{% endif %}
     <tr><th>Stufe</th><td>{% for g in user.groups.all %}{{ g.name }}{% if not forloop.last %}, {% endif %}{% empty %}–{% endfor %}</td></tr>
   </table>
-  <p class="hilfe">Name, E-Mail-Adressen und Stufe ändert der Vorstand.</p>
+  <p class="hilfe">Für Änderungen an Name, E-Mail-Adressen oder Stufe wenden Sie sich bitte an {{ fv_webseite.ansprechpartner }}.</p>
 
   {% if zustellung_form %}
     <h2>Vereinsmails</h2>
@@ -32,7 +32,7 @@
     <li>Zwei-Faktor-Anmeldung:
       {% if zwei_faktor %}eingerichtet – <a href="{% url 'mfa_index' %}">verwalten</a>
       {% else %}nicht eingerichtet – <a href="{% url 'mfa_activate_totp' %}">einrichten</a>{% endif %}
-      {% if pflicht %}<span class="hilfe">(für den Vorstand vorgeschrieben)</span>{% endif %}
+      {% if pflicht %}<span class="hilfe">(für Ihre Stufe vorgeschrieben)</span>{% endif %}
     </li>
   </ul>
 {% endblock %}

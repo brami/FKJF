@@ -8,7 +8,7 @@
   <p>Soll die Seite <strong>„{{ seite.titel }}“</strong> vom {{ seite.datum|date:"j. F Y" }}
      wirklich gelöscht werden?</p>
   {% with n=seite.anhaenge.count %}
-    {% if n %}<p>Dabei werden auch {{ n }} Anhang/Anhänge endgültig gelöscht.</p>{% endif %}
+    {% if n %}<p>Dabei {% if n == 1 %}wird auch 1 Anhang{% else %}werden auch {{ n }} Anhänge{% endif %} endgültig gelöscht.</p>{% endif %}
   {% endwith %}
   <form method="post" class="knoepfe">
     {% csrf_token %}

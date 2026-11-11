@@ -87,6 +87,15 @@ for e, sie in zip(eintraege, SIE):
     ph = lambda t: sorted(re.findall(r"%\(\w+\)s|%[sd]", t))
     assert ph(e["str"]) == ph(sie), (e["str"], sie)
     po.append(polib.POEntry(msgid=e["id"], msgstr=sie))
+# Du-Formen ohne „du/dich/dein“ (nur am Imperativ erkennbar), später gefunden
+NACHTRAG = {
+    "Too many failed login attempts. Try again later.":
+        "Zu viele gescheiterte Anmeldeversuche. Bitte versuchen Sie es später erneut.",
+    "Please contact us if you have any trouble resetting your password.":
+        "Bitte wenden Sie sich an uns, wenn das Zurücksetzen des Passworts nicht klappt.",
+}
+for msgid, sie in NACHTRAG.items():
+    po.append(polib.POEntry(msgid=msgid, msgstr=sie))
 po.save(sys.argv[2] + "/django.po")
 po.save_as_mofile(sys.argv[2] + "/django.mo")
 print(len(po), "Einträge geschrieben")

@@ -247,3 +247,31 @@ def test_passwort_vergessen_mail_siezt(client):
 def test_keine_mail_an_unbekannte_adresse(client):
     client.post(reverse("account_reset_password"), {"email": "unbekannt@example.org"})
     assert len(mail.outbox) == 0
+
+
+def test_zwei_faktor_einrichtbar_nach_normaler_anmeldung(client, pflicht):
+    """Einladung und „Passwort vergessen“ legen die Adresse als „nicht bestätigt“ an.
+    Das darf die Einrichtung nicht blockieren (Adressen pflegt der Vorstand)."""
+    from allauth.mfa.models import Authenticator
+    from allauth.mfa.totp.internal.auth import hotp_value
+    import time
+
+    from seiten.konto import sende_einladung
+
+    vera = konto("vera", "Vorstand")
+    sende_einladung(vera)   # jedes neue Konto beginnt mit einer Einladung
+    client.post(reverse("account_reset_password"), {"email": "vera@example.org"})
+    client.post(reverse("account_login"), {"login": "vera", "password": "Gutes-Passwort-2026"})
+    r = client.get(reverse("mfa_activate_totp"), follow=True)
+    html = r.content.decode()
+    assert "verifiziert" not in html and 'name="code"' in html
+    geheim = client.session["mfa.totp.secret"]
+    code = hotp_value(geheim, int(time.time()) // 30)
+    r = client.post(reverse("mfa_activate_totp"), {"code": f"{code:06d}"})
+    assert r.status_code == 302
+    assert Authenticator.objects.filter(user=vera, type="totp").exists()
+
+
+def test_passwort_vergessen_in_sie_form(client):
+    html = client.get(reverse("account_reset_password")).content.decode()
+    assert "kontaktiere" not in html and "wenden Sie sich an uns" in html

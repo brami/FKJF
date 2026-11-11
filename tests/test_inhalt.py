@@ -52,4 +52,14 @@ def test_geschuetzte_seite_noindex(client, django_user_model):
 
 def test_vorschau_trennt_absaetze():
     s = Seite(titel="x", inhalt="<p>gestellt.</p><p>Vielen Dank</p><ul><li>eins</li><li>zwei</li></ul>")
-    assert s.vorschau() == "gestellt. Vielen Dank eins zwei"
+    assert s.vorschau() == "gestellt. Vielen Dank eins, zwei"
+
+
+@pytest.mark.parametrize("anzahl, text", [(1, "1 Anhang<"), (2, "2 Anhänge<")])
+def test_anzahl_anhaenge_auf_startseite(client, anzahl, text):
+    from django.core.files.uploadedfile import SimpleUploadedFile
+    from seiten.models import Anhang
+    s = Seite.objects.create(titel="x", stufe=None)
+    for i in range(anzahl):
+        Anhang.objects.create(seite=s, datei=SimpleUploadedFile(f"a{i}.pdf", b"%PDF-1.4"))
+    assert text in client.get("/").content.decode()

@@ -337,3 +337,28 @@ msgid "Please contact us if you have any trouble resetting your password."
 msgstr ""
 "Bitte wenden Sie sich an uns, wenn das Zurücksetzen des Passworts nicht "
 "klappt."
+
+msgid "Run"
+msgstr "Ausführen"
+
+msgid "- Select an option -"
+msgstr "– Bitte auswählen –"
+
+msgid "After you’ve created a user, you’ll be able to edit more user options."
+msgstr "Nach dem Anlegen können Sie weitere Angaben bearbeiten."
+
+msgid "In case you’ve forgotten, you are:"
+msgstr "Zur Erinnerung, Sie sind:"
+
+msgid "Disable password-based authentication"
+msgstr "Anmeldung mit Passwort deaktivieren"
+
+msgid "Enable password-based authentication"
+msgstr "Anmeldung mit Passwort aktivieren"
+
+msgid ""
+"This action will <strong>enable</strong> password-based authentication for "
+"this user."
+msgstr ""
+"Damit wird die Anmeldung mit Passwort für diesen Benutzer "
+"<strong>aktiviert</strong>."

@@ -20,7 +20,7 @@ class SeiteForm(forms.ModelForm):
         feld = self.fields["stufe"]
         feld.queryset = Stufe.objects.order_by("rang")
         feld.empty_label = f"{OEFFENTLICH} (ohne Anmeldung)"
-        if not self.instance.pk and "stufe" not in self.initial:
+        if not self.instance.pk and not self.is_bound and not self.initial.get("stufe"):
             self.initial["stufe"] = Stufe.voreinstellung()
 
 

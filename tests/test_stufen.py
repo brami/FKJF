@@ -199,3 +199,11 @@ def test_umbenennen_auf_vorhandenen_gruppennamen_abgelehnt():
     s.name = "Vorstand"
     with pytest.raises(ValidationError):
         s.full_clean()
+
+
+def test_neue_seite_schlaegt_mitglieder_vor_nicht_oeffentlich(client):
+    """Im Formular der Ansicht (mit leerer Seite als instance) – nicht nur bei SeiteForm()."""
+    client.force_login(person("vera", S(VORSTAND)))
+    html = client.get(reverse("seite_neu")).content.decode()
+    mitglieder = S(MITGLIEDER).pk
+    assert f'<option value="{mitglieder}" selected>' in html

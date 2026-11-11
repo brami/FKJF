@@ -275,3 +275,25 @@ def test_zwei_faktor_einrichtbar_nach_normaler_anmeldung(client, pflicht):
 def test_passwort_vergessen_in_sie_form(client):
     html = client.get(reverse("account_reset_password")).content.decode()
     assert "kontaktiere" not in html and "wenden Sie sich an uns" in html
+
+
+def test_zwei_faktor_pflicht_erklaert_sich(client, pflicht):
+    vera = konto("vera", "Vorstand")
+    client.force_login(vera)
+    r = client.get("/", follow=True)
+    assert "muss die Zwei-Faktor-Anmeldung" in r.content.decode()
+
+
+def test_verwaltung_deutsch_und_stufe(client):
+    from django.contrib.auth.models import User
+    vera = konto("vera", "Vorstand")
+    client.force_login(vera)
+    html = client.get(reverse("admin:auth_user_add")).content.decode()
+    assert "After you" not in html and "Nach dem Anlegen" in html and ">Stufe" in html
+    liste = client.get(reverse("admin:auth_user_changelist")).content.decode()
+    assert ">Ausführen<" in liste and "Bitte auswählen" in liste and "ohne Stufe" in liste
+    ohne = User.objects.create_user("hans", "")
+    r = client.post(reverse("admin:auth_user_changelist"),
+                    {"action": "einladung_senden", "_selected_action": [ohne.pk], "index": 0},
+                    follow=True)
+    assert "Keine E-Mail-Adresse für hans" in r.content.decode()

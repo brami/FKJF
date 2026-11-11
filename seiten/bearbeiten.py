@@ -115,7 +115,7 @@ def fassung(request, pk, history_id):
     seite = get_object_or_404(Seite, pk=pk)
     alt = get_object_or_404(seite.history, history_id=history_id)
     datum = formats.date_format(timezone.localtime(alt.history_date), "DATETIME_FORMAT")
-    unterschiede = difflib.HtmlDiff(wrapcolumn=60).make_table(
+    unterschiede = difflib.HtmlDiff(wrapcolumn=38).make_table(
         _textzeilen(alt.inhalt), _textzeilen(seite.inhalt),
         f"Fassung vom {datum}", "Aktuelle Fassung", context=True, numlines=2,
     )

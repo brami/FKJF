@@ -11,9 +11,9 @@
     <tr><th>Externe E-Mail-Adresse</th><td>{{ user.email|default:"–" }}
       <span class="hilfe">– für „Passwort vergessen“ und Einladungen</span></td></tr>
     {% if profil.vereins_email %}<tr><th>Vereinsadresse (Postfach)</th><td>{{ profil.vereins_email }}</td></tr>{% endif %}
-    <tr><th>Gruppe</th><td>{% for g in user.groups.all %}{{ g.name }}{% if not forloop.last %}, {% endif %}{% empty %}–{% endfor %}</td></tr>
+    <tr><th>Stufe</th><td>{% for g in user.groups.all %}{{ g.name }}{% if not forloop.last %}, {% endif %}{% empty %}–{% endfor %}</td></tr>
   </table>
-  <p class="hilfe">Name, E-Mail-Adressen und Gruppe ändert der Vorstand.</p>
+  <p class="hilfe">Name, E-Mail-Adressen und Stufe ändert der Vorstand.</p>
 
   {% if zustellung_form %}
     <h2>Vereinsmails</h2>

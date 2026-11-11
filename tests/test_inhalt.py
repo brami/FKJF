@@ -2,7 +2,7 @@ import pytest
 from django.urls import reverse
 
 from seiten.models import Seite, bereinige_html
-from seiten.stufen import Stufe
+from tests.hilfen import MITGLIEDER, stufe as S
 
 pytestmark = pytest.mark.django_db
 
@@ -24,14 +24,14 @@ def test_erlaubtes_html_bleibt():
 
 
 def test_seite_speichert_bereinigt():
-    s = Seite.objects.create(titel="x", stufe=Stufe.OEFFENTLICH,
+    s = Seite.objects.create(titel="x", stufe=None,
                              inhalt="<p>ok</p><script>alert(1)</script>")
     s.refresh_from_db()
     assert "<script" not in s.inhalt
 
 
 def test_versionsverlauf_wird_gefuehrt():
-    s = Seite.objects.create(titel="Einladung", stufe=Stufe.MITGLIEDER, inhalt="<p>1</p>")
+    s = Seite.objects.create(titel="Einladung", stufe=S(MITGLIEDER), inhalt="<p>1</p>")
     s.inhalt = "<p>2</p>"
     s.save()
     assert s.history.count() == 2
@@ -44,7 +44,7 @@ def test_csp_kopfzeile(client):
 
 
 def test_geschuetzte_seite_noindex(client, django_user_model):
-    s = Seite.objects.create(titel="Intern", stufe=Stufe.MITGLIEDER)
+    s = Seite.objects.create(titel="Intern", stufe=S(MITGLIEDER))
     u = django_user_model.objects.create_superuser("a", "a@example.org", "pw")
     client.force_login(u)
     assert 'content="noindex' in client.get(reverse("seite", args=[s.pk])).content.decode()

@@ -176,7 +176,6 @@ def konto(request):
     return render(request, "konto/uebersicht.html", {
         "zwei_faktor": is_mfa_enabled(request.user, ["totp"]),
         "pflicht": settings.FV_ZWEI_FAKTOR_PFLICHT and rechte.darf_bearbeiten(request.user),
-        "stufe": rechte.stufe_von(request.user),
         "profil": profil,
         "zustellung_form": form,
     })

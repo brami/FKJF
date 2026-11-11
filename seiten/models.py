@@ -6,7 +6,8 @@ import nh3
 from django.conf import settings
 from django.core.exceptions import ValidationError
 from django.core.files.storage import FileSystemStorage
-from django.core.validators import FileExtensionValidator
+from django.contrib.auth.models import Group
+from django.core.validators import FileExtensionValidator, MinValueValidator
 from django.db import models
 from django.urls import reverse
 from django.utils import timezone
@@ -15,7 +16,7 @@ from django.utils.text import Truncator
 from simple_history.models import HistoricalRecords
 
 from .bilder import fassungen, ist_bildname, pruefe_bild
-from .stufen import Stufe
+from .stufen import OEFFENTLICH
 
 # Erlaubte HTML-Elemente im Seiteninhalt; alles andere entfernt nh3.
 ERLAUBTE_TAGS = {
@@ -49,12 +50,66 @@ def private_storage():
     return FileSystemStorage(location=settings.PRIVATE_MEDIA_ROOT, base_url=None)
 
 
+class Stufe(models.Model):
+    """Eine Stufe (Gruppe) – frei benennbar, nach Rang geordnet.
+
+    Wer einer Stufe angehört, sieht alle Seiten dieser und aller niedrigeren Stufen.
+    „Öffentlich“ (ohne Anmeldung) ist fest die unterste Stufe und hat keinen Eintrag.
+    Zu jeder Stufe gehört eine gleichnamige Django-Gruppe; über sie werden Personen
+    zugeordnet.
+    """
+
+    name = models.CharField(max_length=60, unique=True)
+    rang = models.PositiveSmallIntegerField(
+        unique=True, validators=[MinValueValidator(1)],
+        help_text="Höhere Zahl = höhere Stufe. Abstände (10, 20, 30 …) lassen Platz für spätere Stufen.",
+    )
+    darf_bearbeiten = models.BooleanField(
+        "darf bearbeiten", default=False,
+        help_text="Seiten anlegen und ändern, Benutzer verwalten, Versionsverlauf, Newsletter. "
+                  "Für diese Stufe ist die Zwei-Faktor-Anmeldung Pflicht.",
+    )
+    gruppe = models.OneToOneField(Group, on_delete=models.PROTECT, related_name="stufe",
+                                  editable=False)
+
+    class Meta:
+        verbose_name = "Stufe"
+        verbose_name_plural = "Stufen"
+        ordering = ["rang"]
+
+    def __str__(self):
+        return self.name
+
+    def clean(self):
+        andere = Group.objects.filter(name=self.name)
+        if self.gruppe_id:
+            andere = andere.exclude(pk=self.gruppe_id)
+        if andere.filter(stufe__isnull=False).exists() or (self.gruppe_id and andere.exists()):
+            raise ValidationError({"name": "Diesen Namen trägt bereits eine andere Gruppe."})
+
+    def save(self, *args, **kwargs):
+        # Gruppe anlegen bzw. mit umbenennen
+        if self.gruppe_id:
+            if self.gruppe.name != self.name:
+                self.gruppe.name = self.name
+                self.gruppe.save(update_fields=["name"])
+        else:
+            self.gruppe, _ = Group.objects.get_or_create(name=self.name)
+        super().save(*args, **kwargs)
+
+    @classmethod
+    def voreinstellung(cls):
+        """Vorschlag für neue Seiten: die höchste Stufe ohne Bearbeitungsrecht."""
+        return cls.objects.filter(darf_bearbeiten=False).order_by("-rang").first()
+
+
 class Seite(models.Model):
     titel = models.CharField(max_length=200)
     datum = models.DateField(default=timezone.localdate)
-    stufe = models.IntegerField(
-        "Sichtbar für", choices=Stufe.choices, default=Stufe.MITGLIEDER,
-        help_text="Die Seite sehen diese Gruppe und alle höheren.",
+    stufe = models.ForeignKey(
+        Stufe, verbose_name="Sichtbar für", null=True, blank=True,
+        on_delete=models.PROTECT, related_name="seiten",
+        help_text=f"Die Seite sehen diese Stufe und alle höheren. Leer = {OEFFENTLICH} (ohne Anmeldung).",
     )
     inhalt = models.TextField(blank=True)
     erstellt = models.DateTimeField(auto_now_add=True)
@@ -76,6 +131,10 @@ class Seite(models.Model):
 
     def get_absolute_url(self):
         return reverse("seite", args=[self.pk])
+
+    @property
+    def stufe_name(self):
+        return self.stufe.name if self.stufe_id else OEFFENTLICH
 
     def vorschau(self, woerter=40):
         # Absätze, Listenpunkte usw. durch Leerzeichen trennen, damit Wörter nicht zusammenkleben
@@ -231,3 +290,10 @@ def zustelladresse(user) -> str:
     if profil and profil.vereins_email and profil.zustellung == Profil.Zustellung.VEREIN:
         return profil.vereins_email
     return user.email
+
+
+@models.signals.post_delete.connect
+def _stufe_gruppe_loeschen(sender, instance, **kwargs):
+    """Wird eine Stufe gelöscht, verschwindet auch ihre Gruppe (und damit die Zuordnungen)."""
+    if sender is Stufe and instance.gruppe_id:
+        Group.objects.filter(pk=instance.gruppe_id).delete()

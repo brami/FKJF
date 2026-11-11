@@ -8,7 +8,7 @@ from django.core.files.uploadedfile import SimpleUploadedFile
 from django.urls import reverse
 
 from seiten.models import Anhang, Seite
-from seiten.stufen import Stufe
+from tests.hilfen import FOERDERMITGLIEDER, MITGLIEDER, VORSTAND, formwert, stufe as S
 
 pytestmark = pytest.mark.django_db
 
@@ -30,14 +30,14 @@ def mitglied():
 @pytest.fixture
 def seite():
     return Seite.objects.create(titel="Einladung", datum=date(2026, 3, 1),
-                                stufe=Stufe.MITGLIEDER, inhalt="<p>Erste Fassung</p>")
+                                stufe=S(MITGLIEDER), inhalt="<p>Erste Fassung</p>")
 
 
 def formdaten(**werte):
     daten = {
         "titel": "Einladung zur Mitgliederversammlung",
         "datum": "2026-03-01",
-        "stufe": str(Stufe.FOERDERMITGLIEDER),
+        "stufe": formwert(FOERDERMITGLIEDER),
         "inhalt": "<h2>Tagesordnung</h2><ol><li>Bericht</li></ol>",
         "anhang-TOTAL_FORMS": "0",
         "anhang-INITIAL_FORMS": "0",
@@ -106,7 +106,7 @@ def test_neue_seite_mit_anhaengen(client, vorstand):
     s = Seite.objects.get()
     assert r.status_code == 302 and r["Location"] == s.get_absolute_url()
     assert s.titel == "Einladung zur Mitgliederversammlung"
-    assert s.stufe == Stufe.FOERDERMITGLIEDER
+    assert s.stufe == S(FOERDERMITGLIEDER)
     assert sorted(s.anhaenge.values_list("dateiname", flat=True)) == [
         "einladung.pdf", "satzungsaenderung.pdf"]
     assert s.history.first().history_user == vorstand
@@ -185,7 +185,7 @@ def test_loeschen_entfernt_seite_und_dateien(client, vorstand, seite):
 def test_verlauf_vergleich_und_wiederherstellen(client, vorstand, seite):
     client.force_login(vorstand)
     client.post(reverse("seite_bearbeiten", args=[seite.pk]), formdaten(
-        titel="Einladung (geändert)", stufe=str(Stufe.MITGLIEDER), datum="2026-03-01",
+        titel="Einladung (geändert)", stufe=formwert(MITGLIEDER), datum="2026-03-01",
         inhalt="<p>Zweite Fassung</p>"))
     seite.refresh_from_db()
     assert seite.inhalt == "<p>Zweite Fassung</p>"
@@ -216,7 +216,7 @@ def test_wiederherstellen_nur_per_post(client, vorstand, seite):
 
 
 def test_fassung_einer_anderen_seite_nicht_abrufbar(client, vorstand, seite):
-    andere = Seite.objects.create(titel="Andere", stufe=Stufe.VORSTAND)
+    andere = Seite.objects.create(titel="Andere", stufe=S(VORSTAND))
     client.force_login(vorstand)
     h = andere.history.first().history_id
     assert client.get(reverse("seite_fassung", args=[seite.pk, h])).status_code == 404

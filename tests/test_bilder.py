@@ -10,7 +10,7 @@ from django.urls import reverse
 from PIL import Image
 
 from seiten.models import Anhang, Seite
-from seiten.stufen import Stufe
+from tests.hilfen import MITGLIEDER, stufe as S
 
 pytestmark = pytest.mark.django_db
 
@@ -43,7 +43,7 @@ def oeffnen(feld):
 
 @pytest.fixture
 def seite():
-    return Seite.objects.create(titel="Sommerfest", stufe=Stufe.OEFFENTLICH, inhalt="<p>Schön war’s.</p>")
+    return Seite.objects.create(titel="Sommerfest", stufe=None, inhalt="<p>Schön war’s.</p>")
 
 
 @pytest.fixture
@@ -97,7 +97,7 @@ def test_dateien_werden_beim_loeschen_entfernt(seite):
 # --- Hochladen über die Bearbeitungsmaske -------------------------------------
 
 def formdaten(seite, **werte):
-    daten = {"titel": seite.titel, "datum": "2026-07-01", "stufe": str(seite.stufe),
+    daten = {"titel": seite.titel, "datum": "2026-07-01", "stufe": seite.stufe_id or "",
              "inhalt": seite.inhalt, "anhang-TOTAL_FORMS": "0", "anhang-INITIAL_FORMS": "0",
              "anhang-MIN_NUM_FORMS": "0", "anhang-MAX_NUM_FORMS": "1000"}
     daten.update(werte)
@@ -173,7 +173,7 @@ def test_bilder_werden_angezeigt_nicht_heruntergeladen(client, seite):
 
 @pytest.mark.parametrize("variante", ["bild", "vorschau"])
 def test_bilder_geschuetzter_seiten_nur_mit_recht(client, variante):
-    intern = Seite.objects.create(titel="Intern", stufe=Stufe.MITGLIEDER)
+    intern = Seite.objects.create(titel="Intern", stufe=S(MITGLIEDER))
     a = Anhang.objects.create(seite=intern, datei=foto("eins.jpg", (800, 600)))
     url = reverse("anhang_variante", args=[a.pk, variante])
     assert client.get(url).status_code == 302          # nicht angemeldet -> Anmeldung

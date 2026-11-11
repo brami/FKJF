@@ -21,8 +21,8 @@ from django.views.decorators.http import require_http_methods, require_POST
 
 from . import rechte
 from .forms import AnhangFormSet, NeueAnhaengeForm, SeiteForm
-from .models import Seite
-from .stufen import Stufe
+from .models import Seite, Stufe
+from .stufen import OEFFENTLICH
 
 # Der Editor setzt Stilangaben direkt an seinen Bedienelementen. Das wird nur auf
 # den Bearbeitungsseiten erlaubt; Skripte bleiben auf eigene Dateien beschränkt.
@@ -103,6 +103,13 @@ def _textzeilen(html_text):
     return [z.strip() for z in text.splitlines() if z.strip()]
 
 
+def _stufen_name(stufe_id):
+    if not stufe_id:
+        return OEFFENTLICH
+    stufe = Stufe.objects.filter(pk=stufe_id).first()
+    return stufe.name if stufe else "(gelöschte Stufe)"
+
+
 @nur_vorstand
 def fassung(request, pk, history_id):
     seite = get_object_or_404(Seite, pk=pk)
@@ -117,8 +124,8 @@ def fassung(request, pk, history_id):
         felder.append(("Titel", alt.titel, seite.titel))
     if alt.datum != seite.datum:
         felder.append(("Datum", alt.datum, seite.datum))
-    if alt.stufe != seite.stufe:
-        felder.append(("Sichtbar für", Stufe(alt.stufe).label, Stufe(seite.stufe).label))
+    if alt.stufe_id != seite.stufe_id:
+        felder.append(("Sichtbar für", _stufen_name(alt.stufe_id), seite.stufe_name))
     return render(request, "seiten/fassung.html", {
         "seite": seite, "alt": alt, "datum": datum,
         "unterschiede": unterschiede, "felder": felder,
@@ -131,8 +138,12 @@ def fassung(request, pk, history_id):
 def wiederherstellen(request, pk, history_id):
     seite = get_object_or_404(Seite, pk=pk)
     alt = get_object_or_404(seite.history, history_id=history_id)
-    for feld in ("titel", "datum", "stufe", "inhalt"):
+    for feld in ("titel", "datum", "stufe_id", "inhalt"):
         setattr(seite, feld, getattr(alt, feld))
+    if seite.stufe_id and not Stufe.objects.filter(pk=seite.stufe_id).exists():
+        messages.error(request, "Die Stufe dieser Fassung gibt es nicht mehr. "
+                                "Bitte die Seite bearbeiten und eine Stufe wählen.")
+        return redirect("seite_verlauf", pk=seite.pk)
     datum = formats.date_format(timezone.localtime(alt.history_date), "DATETIME_FORMAT")
     seite._change_reason = f"Wiederhergestellt aus der Fassung vom {datum}"
     seite.save()

@@ -1,7 +1,7 @@
 # Webseite Förderverein KF/JF Kreuzau
 
-Django-6.1-Anwendung: öffentliche Seiten und geschützter Bereich mit Gruppenstufen
-(Öffentlich < Fördermitglieder < Mitglieder < Vorstand), Anhängen mit Rechteprüfung,
+Django-6.1-Anwendung: öffentliche Seiten und geschützter Bereich mit frei benennbaren
+Stufen (hier: Öffentlich < Fördermitglieder < Mitglieder < Vorstand), Anhängen mit Rechteprüfung,
 Versionsverlauf und (in Arbeit) Newsletter.
 
 Anforderungen: siehe Projekt-Dokument `webseite/anforderungen_django.md`.
@@ -27,7 +27,8 @@ Tests: `python -m pytest`
 - `seiten/views.py` – Startseite, Seitenansicht, Anhang-Download
 - `seiten/konto.py` – Anmeldung (django-allauth): keine Registrierung, Einladung per
   Link, Pflicht zur Zwei-Faktor-Anmeldung für den Vorstand
-- `seiten/admin.py` – Benutzerverwaltung für den Vorstand (anlegen, einladen, Gruppen)
+- `seiten/admin.py` – Benutzerverwaltung für den Vorstand (anlegen, einladen, Stufen zuordnen),
+  Stufenverwaltung für Administratoren
 - `seiten/bearbeiten.py` – Bearbeitung für den Vorstand: Seiten anlegen, ändern,
   löschen, Anhänge verwalten, Versionsverlauf mit Vergleich und Wiederherstellen
 - `static/vendor/tinymce/` – Editor TinyMCE 8 (GPL-2.0-or-later), nur benötigte Teile
@@ -44,10 +45,26 @@ Tests: `python -m pytest`
 | `FV_PRIVATE_MEDIA_ROOT` | Ablage der Anhänge (außerhalb des Webverzeichnisses) |
 | `FV_ADMIN_PFAD` | Pfad der Verwaltung, Standard `verwaltung/` |
 
+## Stufen
+
+Wer was sieht, regeln **Stufen**. Jede Seite gehört zu einer Stufe; sie sehen alle
+Personen dieser und jeder höheren Stufe. Hat jemand mehrere Stufen, zählt die höchste.
+
+- **Öffentlich** ist fest die unterste Stufe (ohne Anmeldung; im Formular „leer“).
+- Alle anderen Stufen legen Administratoren in der Verwaltung an (*Stufen*): **Name**
+  (frei), **Rang** (höhere Zahl = höhere Stufe; Abstände wie 10/20/30 lassen Platz zum
+  Einfügen) und **darf bearbeiten** (Seiten, Verlauf, Benutzer; dafür gilt die
+  Zwei-Faktor-Pflicht). Mehrere Stufen dürfen bearbeiten.
+- Zu jeder Stufe gehört automatisch eine gleichnamige Gruppe, über die Personen in der
+  Benutzerverwaltung zugeordnet werden; Umbenennen zieht die Gruppe mit.
+- Eine Stufe lässt sich nur löschen, solange ihr keine Seite zugeordnet ist.
+- Für den Förderverein legt die Migration Fördermitglieder (10), Mitglieder (20) und
+  Vorstand (30, darf bearbeiten) an. Andere Anwendungen benennen, ergänzen oder ersetzen sie.
+
 ## Anmeldung und Benutzer
 
 - Konten legt der Vorstand in der Verwaltung an (*Benutzer → Hinzufügen*): Name,
-  E-Mail-Adresse, Gruppe. Ein Passwort wird nicht vergeben; die Person erhält eine
+  E-Mail-Adresse, Stufe. Ein Passwort wird nicht vergeben; die Person erhält eine
   **Einladung** mit einem Link (7 Tage gültig, einmal verwendbar) und setzt es selbst.
   Ist der Mailversand noch nicht eingerichtet, zeigt die Verwaltung den Link an.
 - Anmelden mit Benutzername **oder** E-Mail-Adresse (jede Adresse nur einmal);
@@ -59,6 +76,7 @@ Tests: `python -m pytest`
   lässt sich dort nicht umgehen. Der Vorstand kann keine Administratorkonten sehen oder
   ändern, niemanden zum Administrator machen und keine fremden Passwörter setzen.
 - Erstes Vorstandskonto auf dem Server: `sudo fv-manage vorstand_anlegen <name> <e-mail> --admin`
+  (Stufe: die höchste mit Bearbeitungsrecht, oder `--stufe <Name>`)
 
 ## Postfach und Passwörter
 

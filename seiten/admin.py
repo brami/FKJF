@@ -17,8 +17,7 @@ from simple_history.admin import SimpleHistoryAdmin
 
 from . import rechte
 from .konto import mails_werden_verschickt, sende_einladung
-from .models import Anhang, Profil, Seite
-from .stufen import GRUPPE_ZU_STUFE
+from .models import Anhang, Profil, Seite, Stufe
 
 User = get_user_model()
 
@@ -117,13 +116,13 @@ class BenutzerAnlegenForm(EindeutigeEmail, forms.ModelForm):
         widgets = {"groups": forms.CheckboxSelectMultiple}
         help_texts = {
             "username": "Zur Anmeldung, z. B. vorname.nachname. Anmelden geht auch mit der E-Mail-Adresse.",
-            "groups": "Die höchste Gruppe bestimmt, was die Person sehen darf.",
+            "groups": "Die höchste Stufe bestimmt, was die Person sehen darf.",
         }
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.fields["email"].required = True
-        self.fields["groups"].queryset = Group.objects.filter(name__in=GRUPPE_ZU_STUFE)
+        self.fields["groups"].queryset = Group.objects.filter(stufe__isnull=False).order_by("stufe__rang")
 
     def save(self, commit=True):
         user = super().save(commit=False)
@@ -143,7 +142,7 @@ class BenutzerAendernForm(EindeutigeEmail, forms.ModelForm):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         if "groups" in self.fields:
-            self.fields["groups"].queryset = Group.objects.filter(name__in=GRUPPE_ZU_STUFE)
+            self.fields["groups"].queryset = Group.objects.filter(stufe__isnull=False).order_by("stufe__rang")
         if "email" in self.fields:
             self.fields["email"].required = True
 
@@ -154,7 +153,7 @@ def gruppen(user):
 
 
 admin.site.unregister(User)
-admin.site.unregister(Group)  # die Gruppen sind fest vorgegeben (Migration)
+admin.site.unregister(Group)  # Gruppen entstehen automatisch zu jeder Stufe
 
 
 @admin.register(User)
@@ -237,3 +236,30 @@ class BenutzerAdmin(NurVorstand, UserAdmin):
     def einladung_senden(self, request, queryset):
         for user in queryset:
             self._einladen(request, user)
+
+
+@admin.register(Stufe)
+class StufeAdmin(admin.ModelAdmin):
+    """Stufen anlegen, umbenennen, ordnen – nur für Administratoren.
+
+    Eine Stufe lässt sich nur löschen, solange ihr keine Seite zugeordnet ist.
+    """
+
+    list_display = ("name", "rang", "darf_bearbeiten", "anzahl_seiten", "anzahl_personen")
+    list_editable = ("rang",)
+    ordering = ("rang",)
+
+    def has_module_permission(self, request):
+        return request.user.is_active and request.user.is_superuser
+
+    has_view_permission = has_add_permission = has_change_permission = has_delete_permission = (
+        lambda self, request, obj=None: request.user.is_active and request.user.is_superuser
+    )
+
+    @admin.display(description="Seiten")
+    def anzahl_seiten(self, obj):
+        return obj.seiten.count()
+
+    @admin.display(description="Personen")
+    def anzahl_personen(self, obj):
+        return obj.gruppe.user_set.count()

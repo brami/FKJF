@@ -1,0 +1,379 @@
+% =====================================================================
+%  Webseite Förderverein KF/JF Kreuzau -- Anleitung für Mitglieder
+%  Vorlage: deb-support (debsupport.sty, siehe latex/README.md)
+%  Bilder: Bildschirmfotos einer Testinstallation mit Beispieldaten
+%  Übersetzen mit:  pdflatex anleitung_mitglieder_webseite.tex  (2x)
+% =====================================================================
+\documentclass[a4paper,fontsize=10pt]{scrartcl}
+\usepackage[bericht]{debsupport}
+\usepackage{float}                % Bilder genau an ihrer Stelle
+\setcounter{tocdepth}{1}
+\renewcommand*{\textfraction}{0.1}
+\renewcommand*{\topfraction}{0.9}
+\renewcommand*{\floatpagefraction}{0.8}
+
+% Vereinskopf statt deb-support (Vorlage bleibt, nur die Absenderdaten wechseln)
+\dssetup{firma=Förderverein KF/JF Kreuzau}
+\makeatletter
+\renewcommand*{\dslogo}[1][24.88]{%
+  {\color{dsrot}\dsserif\fontsize{#1}{#1}\selectfont\scshape\dsFirma}}
+\renewcommand*{\ds@kopf}{%
+  \put(24.5,279.4){\makebox(0,0)[lb]{\dslogo[20]}}%
+  \put(195.6,276.3){\makebox(0,0)[rb]{{\dsserif\fontsize{12}{14.45}\selectfont
+     \begin{tabular}[b]{@{}r@{}}Kinder- und Jugendfeuerwehr\\Kreuzau\\
+     foerderverein-kf-jf-kreuzau.de\end{tabular}}}}%
+  \put(17.8,271.85){\rule{179.8mm}{0.4pt}}}
+\renewcommand*{\dsfolgekopf}[1]{%
+  \parbox[b]{\textwidth}{\dslogo[11]\hfill #1\\[-0.4ex]%
+    \rule{\textwidth}{0.4pt}}}
+\makeatother
+\renewcommand*{\dsdokumentart}{Anleitung}
+\renewcommand*{\dskurztitel}{Webseite -- Anleitung für Mitglieder}
+\renewcommand*{\dsbeleg}{}
+\setlength{\emergencystretch}{3em}
+\graphicspath{{bilder/}}
+
+% Bildschirmfoto mit dünnem Rahmen:  \foto[Breite]{Datei}{Bildunterschrift}
+\newcommand{\foto}[3][0.72\textwidth]{%
+  \begin{figure}[H]
+    \centering
+    \fcolorbox{dsgrau!60}{white}{\includegraphics[width=#1]{#2}}
+    \caption{#3}
+  \end{figure}}
+% Bedienelement, z. B. \knopf{Anmelden}
+\newcommand*{\knopf}[1]{\textbf{\guillemotright #1\guillemotleft}}
+\newcommand*{\web}{\url{https://foerderverein-kf-jf-kreuzau.de}}
+\setcapindent{0pt}\addtokomafont{caption}{\small}\addtokomafont{captionlabel}{\bfseries}
+
+\begin{document}
+
+\dstitel{Die Webseite des Fördervereins}
+        {Anleitung für Mitglieder und Fördermitglieder:
+         Konto, Anmelden, Seiten und Anhänge, Newsletter}
+        {Webseite: & \web\\
+         Für:      & alle Personen mit Konto (ohne Bearbeitungsrechte)\\
+         Stand:    & \today}
+
+\begin{dshinweis}[title=Kurz und knapp]
+\begin{enumerate}
+  \item Sie erhalten vom Vorstand eine \textbf{Einladung per E-Mail}. Über den
+        Link darin legen Sie Ihr Passwort fest.
+  \item Danach melden Sie sich mit \textbf{Benutzername oder E-Mail-Adresse}
+        und Passwort an (\knopf{Anmelden} oben rechts).
+  \item Auf der \textbf{Startseite} stehen alle Beiträge, die Sie sehen dürfen,
+        die neuesten zuerst. \knopf{Weiterlesen} öffnet einen Beitrag mit
+        Bildern und Anhängen.
+  \item Unter \textbf{Ihrem Namen} oben rechts finden Sie \emph{Mein Konto}:
+        Passwort ändern und weitere Einstellungen.
+\end{enumerate}
+\end{dshinweis}
+
+\tableofcontents
+
+% ------------------------------------------------------------------
+\section{Was bietet die Webseite?}
+
+Die Webseite hat einen öffentlichen Teil, den jeder ohne Anmeldung sieht,
+und einen geschützten Teil für Mitglieder. Nach der Anmeldung sehen Sie
+zusätzlich die Beiträge für Ihre Gruppe: Einladungen, Protokolle,
+Informationen und die zugehörigen Dateien (meist PDF).
+
+Jedes Konto gehört zu einer \textbf{Stufe}. Wer zu einer Stufe gehört, sieht
+deren Beiträge und die aller niedrigeren Stufen:
+
+\begin{center}
+\begin{tabularx}{0.85\textwidth}{@{}lX@{}}
+\toprule
+\textbf{Stufe} & \textbf{sieht} \\
+\midrule
+Öffentlich (ohne Anmeldung) & öffentliche Beiträge \\
+Fördermitglieder            & dazu Beiträge für Fördermitglieder \\
+Mitglieder                  & dazu Beiträge für Mitglieder \\
+Vorstand                    & alles; der Vorstand schreibt auch die Beiträge \\
+\bottomrule
+\end{tabularx}
+\end{center}
+
+Geschützte Beiträge erkennen Sie an einem kleinen Kästchen mit dem Namen der
+Stufe neben dem Datum (z.\,B.\ \fbox{\small Mitglieder}).
+Öffentliche Beiträge haben kein solches Kästchen.
+
+Die Webseite funktioniert in jedem aktuellen Browser auf PC, Tablet und
+Smartphone. Eine App ist nicht nötig.
+
+% ------------------------------------------------------------------
+\section{Ihr Konto einrichten}
+
+\subsection{Die Einladung}
+
+Konten legt der Vorstand an; selbst registrieren kann man sich nicht. Sobald
+Ihr Konto angelegt ist, erhalten Sie eine E-Mail mit dem Betreff
+\emph{[Förderverein KF/JF Kreuzau] Einladung zur Webseite}:
+
+\begin{dshinweis}[title=Beispiel: Einladung]
+\small
+Hallo Erika Neu,\par
+für Sie wurde ein Konto auf der Webseite \glqq Förderverein KF/JF Kreuzau\grqq{}
+angelegt: https://foerderverein-kf-jf-kreuzau.de\par
+Ihr Benutzername: erika.neu\\
+(Anmelden können Sie sich auch mit dieser E-Mail-Adresse.)\par
+Bitte legen Sie über den folgenden Link Ihr Passwort fest. Der Link ist
+7 Tage gültig und kann nur einmal verwendet werden:\\
+https://foerderverein-kf-jf-kreuzau.de/konto/password/reset/key/…\par
+Mit freundlichen Grüßen\\
+Der Vorstand
+\end{dshinweis}
+
+Notieren Sie sich Ihren \textbf{Benutzernamen}. Sie können sich aber auch
+immer mit Ihrer E-Mail-Adresse anmelden.
+
+\subsection{Passwort festlegen}
+
+Ein Klick auf den Link in der Einladung öffnet die Seite \emph{Passwort
+ändern}. Geben Sie dort zweimal dasselbe neue Passwort ein und klicken Sie
+auf \knopf{Passwort ändern}.
+
+\foto{02_passwort_festlegen}{Passwort festlegen über den Link aus der Einladung}
+
+Das Passwort muss mindestens 10~Zeichen lang sein, darf nicht nur aus Ziffern
+bestehen und nicht zu einfach sein (z.\,B.\ nicht \emph{passwort123} oder Ihr
+Name). Gut merken lässt sich ein Satz oder mehrere Wörter, etwa
+\emph{Sommerfest-am-Gerätehaus-2027}.
+
+\begin{dshinweis}[title=Link abgelaufen?]
+Der Link gilt 7~Tage und nur einmal. Ist er abgelaufen, fordern Sie über
+\emph{Passwort vergessen?} auf der Anmeldeseite einfach einen neuen an
+(Abschnitt~\ref{sec:vergessen}).
+\end{dshinweis}
+
+% ------------------------------------------------------------------
+\section{Anmelden und Abmelden}
+
+Klicken Sie auf der Webseite oben rechts auf \knopf{Anmelden}.
+
+\foto{03_anmelden}{Die Anmeldeseite}
+
+\begin{enumerate}
+  \item Bei \emph{Anmeldung} tragen Sie Ihren \textbf{Benutzernamen} (z.\,B.\
+        \emph{max.mustermann}) oder Ihre \textbf{E-Mail-Adresse} ein.
+  \item Bei \emph{Passwort} tragen Sie Ihr Passwort ein.
+  \item \emph{Angemeldet bleiben} sollten Sie nur an Ihrem eigenen Gerät
+        ankreuzen. Dann müssen Sie sich dort nicht jedes Mal neu anmelden.
+  \item Klicken Sie auf \knopf{Anmelden}.
+\end{enumerate}
+
+Nach der Anmeldung steht oben rechts Ihr Name. Ein Klick darauf öffnet
+\emph{Mein Konto}. Daneben steht \knopf{Abmelden}. Melden Sie sich an fremden
+oder gemeinsam genutzten Geräten nach dem Lesen immer ab.
+
+\foto{04b_kopfzeile}{Kopfzeile nach der Anmeldung: Ihr Name (Mein Konto) und Abmelden}
+
+% ------------------------------------------------------------------
+\section{Die Startseite}
+
+Die Startseite zeigt alle Beiträge, die Sie sehen dürfen, die neuesten oben.
+Jeder Beitrag erscheint mit Datum, Titel, den ersten Zeilen des Textes und
+gegebenenfalls einem Vorschaubild.
+
+\foto{04_startseite_mitglied}{Startseite nach der Anmeldung als Mitglied}
+
+\begin{itemize}
+  \item Das Kästchen neben dem Datum (hier \fbox{\small Mitglieder}) zeigt,
+        für wen der Beitrag bestimmt ist.
+  \item \emph{2~Anhänge} bedeutet: Zum Beitrag gehören zwei Dateien, z.\,B.\
+        eine Einladung als PDF.
+  \item \knopf{Weiterlesen} oder ein Klick auf den Titel öffnet den ganzen
+        Beitrag.
+  \item Ein Klick auf den Vereinsnamen oben links bringt Sie von überall
+        zurück zur Startseite.
+\end{itemize}
+
+Ohne Anmeldung sieht die Startseite genauso aus, enthält aber nur die
+öffentlichen Beiträge:
+
+\foto[0.6\textwidth]{01_startseite_gast}{Startseite ohne Anmeldung: nur öffentliche Beiträge}
+
+% ------------------------------------------------------------------
+\section{Einen Beitrag lesen}
+
+\subsection{Text und Anhänge}
+
+Ein geöffneter Beitrag zeigt den vollständigen Text. Darunter stehen unter
+\emph{Anhänge} die zugehörigen Dateien. Ein Klick auf einen Anhang öffnet
+oder speichert die Datei, je nach Browser.
+
+\foto[0.65\textwidth]{05_seite_jhv}{Ein Beitrag für Mitglieder mit zwei Anhängen}
+
+\begin{dshinweis}[title=Anhänge sind geschützt]
+Anhänge eines geschützten Beitrags lassen sich nur abrufen, wenn Sie
+angemeldet sind und den Beitrag sehen dürfen. Ein weitergeleiteter Link auf
+einen Anhang funktioniert für andere Personen daher nicht. Bitte geben Sie
+heruntergeladene Dateien aus dem Mitgliederbereich nicht an Außenstehende
+weiter.
+\end{dshinweis}
+
+\subsection{Bilder}
+
+Hat ein Beitrag Bilder, steht das \textbf{Titelbild} groß über dem Text, die
+übrigen Bilder stehen als kleine \textbf{Galerie} darunter. Ein Klick auf
+ein Bild zeigt es in voller Größe; mit der Zurück-Taste des Browsers kommen
+Sie zum Beitrag zurück.
+
+\foto[0.55\textwidth]{06_seite_fest}{Beitrag mit Titelbild, Text und Galerie
+  (Beispielbilder)}
+
+% ------------------------------------------------------------------
+\section{Mein Konto}
+
+Ein Klick auf Ihren Namen oben rechts öffnet \emph{Mein Konto}. Dort sehen
+Sie Ihren Namen, Benutzernamen, Ihre E-Mail-Adresse und Ihre Stufe.
+
+\foto{07_mein_konto}{Mein Konto}
+
+Name, E-Mail-Adressen und Stufe ändert der Vorstand. Hat sich zum Beispiel
+Ihre E-Mail-Adresse geändert, sagen Sie bitte dem Vorstand Bescheid. Sonst
+erreichen Sie Einladungen und \emph{Passwort vergessen} nicht mehr.
+
+\subsection{Vereinsadresse und Vereinsmails}
+
+Einige Personen haben zusätzlich eine \textbf{Vereinsadresse} (ein Postfach
+\emph{…@foerderverein-kf-jf-kreuzau.de}). Dann erscheint auf \emph{Mein Konto}
+der Abschnitt \emph{Vereinsmails}. Dort wählen Sie, wohin E-Mails des
+Vereins, etwa der Newsletter, geschickt werden: an Ihre externe Adresse oder
+an die Vereinsadresse. Auswahl treffen und \knopf{Speichern} klicken.
+
+\foto[0.65\textwidth]{07b_konto_vereinsmails}{Mein Konto mit Vereinsadresse:
+  Auswahl, wohin Vereinsmails gehen}
+
+Mit der Vereinsadresse können Sie sich auch an der Webseite anmelden. Das
+Passwort ist für Webseite und Postfach dasselbe.
+
+% ------------------------------------------------------------------
+\section{Passwort}
+
+\subsection{Passwort ändern}
+
+Unter \emph{Mein Konto} $\rightarrow$ \knopf{Passwort ändern} geben Sie Ihr
+bisheriges Passwort und zweimal das neue ein.
+
+\foto[0.7\textwidth]{08_passwort_aendern}{Passwort ändern}
+
+Haben Sie eine Vereinsadresse, gilt das neue Passwort auch für Ihr Postfach.
+Tragen Sie es danach in Ihren Mailprogrammen (Smartphone, PC) neu ein.
+
+\subsection{Passwort vergessen}\label{sec:vergessen}
+
+\begin{enumerate}
+  \item Auf der Anmeldeseite auf \knopf{Passwort vergessen?} klicken.
+  \item Ihre E-Mail-Adresse eintragen und \knopf{Passwort zurücksetzen}
+        klicken.
+  \item Sie erhalten eine E-Mail mit einem Link. Über diesen Link legen Sie
+        wie bei der Einladung ein neues Passwort fest.
+\end{enumerate}
+
+\foto[0.7\textwidth]{09_passwort_vergessen}{Passwort vergessen: E-Mail-Adresse eintragen}
+
+Kommt keine E-Mail an, sehen Sie bitte im Spam-Ordner nach. Aus Sicherheitsgründen
+zeigt die Webseite immer dieselbe Bestätigung, auch wenn die Adresse nicht bekannt
+ist. Hilft das nicht, wenden Sie sich an den Vorstand.
+
+% ------------------------------------------------------------------
+\section{Zwei-Faktor-Anmeldung (freiwillig)}
+
+Für Mitglieder ist die Zwei-Faktor-Anmeldung freiwillig, für den Vorstand
+Pflicht. Sie schützt Ihr Konto zusätzlich: Bei der Anmeldung braucht man
+außer dem Passwort einen sechsstelligen Code aus einer App auf Ihrem
+Smartphone. Ein gestohlenes Passwort allein reicht dann nicht mehr.
+
+Sie benötigen eine Authenticator-App, zum Beispiel \emph{Aegis} oder
+\emph{FreeOTP} (frei), \emph{Google Authenticator} oder \emph{Microsoft
+Authenticator}.
+
+\begin{enumerate}
+  \item \emph{Mein Konto} $\rightarrow$ \emph{Zwei-Faktor-Anmeldung}
+        $\rightarrow$ \knopf{einrichten}.
+  \item In der App ein neues Konto hinzufügen und den QR-Code scannen.
+  \item Den sechsstelligen Code aus der App bei \emph{Authentifizierungscode}
+        eintragen und \knopf{Aktivieren} klicken.
+\end{enumerate}
+
+\foto[0.6\textwidth]{10_zwei_faktor}{Zwei-Faktor-Anmeldung einrichten}
+
+Ab jetzt fragt die Webseite nach dem Passwort zusätzlich nach dem aktuellen
+Code aus der App.
+
+\begin{dshinweis}[title=Wichtig: für den Notfall vorsorgen]
+Unter \emph{Mein Konto} $\rightarrow$ \emph{Zwei-Faktor-Anmeldung}
+$\rightarrow$ \knopf{verwalten} können Sie \textbf{Wiederherstellungscodes}
+erzeugen. Drucken Sie diese aus oder notieren Sie sie und bewahren Sie sie
+sicher auf. Mit einem dieser Codes kommen Sie auch ohne Smartphone in Ihr
+Konto, etwa bei Verlust oder Wechsel des Geräts.
+\end{dshinweis}
+
+% ------------------------------------------------------------------
+\section{Newsletter per E-Mail}
+
+Der Vorstand kann Beiträge zusätzlich als E-Mail an alle Personen schicken,
+die den Beitrag sehen dürfen, zum Beispiel die Einladung zur
+Jahreshauptversammlung. Die E-Mail kommt an die Adresse, die Sie unter
+\emph{Vereinsmails} gewählt haben, sonst an Ihre externe Adresse.
+
+Eine solche E-Mail enthält oft eine kurze Ankündigung, darunter entweder den
+ganzen Beitrag oder nur den Anfang mit dem Knopf \knopf{Weiterlesen}.
+Beiträge für Mitglieder öffnen sich erst nach der Anmeldung; danach landen
+Sie direkt beim Beitrag.
+
+\foto[0.6\textwidth]{11_newsletter_mail}{So sieht ein Newsletter im Postfach aus}
+
+Wenn Sie auf den Newsletter antworten, geht Ihre Antwort an die Person, die
+ihn verschickt hat, und an den Vorstand.
+
+% ------------------------------------------------------------------
+\section{Auf dem Smartphone}
+
+Auf dem Smartphone öffnen Sie die Webseite einfach im Browser. Die Seite
+passt sich der Bildschirmbreite an; Anmelden, Lesen und Anhänge funktionieren
+wie am PC.
+
+\foto[0.32\textwidth]{12_handy_startseite}{Startseite auf dem Smartphone}
+
+Tipp: Über das Menü des Browsers (\emph{Zum Startbildschirm hinzufügen})
+legen Sie die Webseite wie eine App auf den Startbildschirm.
+
+% ------------------------------------------------------------------
+\section{Häufige Fragen}
+
+\begin{description}[style=nextline,leftmargin=0pt,itemsep=0.6\baselineskip]
+  \item[Ich habe meinen Benutzernamen vergessen.]
+    Melden Sie sich einfach mit Ihrer E-Mail-Adresse an.
+  \item[Der Link aus der Einladung funktioniert nicht.]
+    Er ist nach 7~Tagen oder nach einmaliger Verwendung ungültig. Fordern Sie
+    über \emph{Passwort vergessen?} einen neuen an.
+  \item[Ein Link aus einer E-Mail zeigt „nicht gefunden“.]
+    Der Beitrag ist für eine andere Stufe bestimmt oder wurde entfernt. Prüfen
+    Sie, ob Sie angemeldet sind. Sonst fragen Sie den Vorstand.
+  \item[Ich sehe einen Beitrag nicht, den andere sehen.]
+    Er ist wahrscheinlich für eine höhere Stufe bestimmt. Ob Ihre Stufe
+    stimmt, sehen Sie unter \emph{Mein Konto}.
+  \item[Ich bekomme keine Newsletter.]
+    Prüfen Sie den Spam-Ordner und unter \emph{Mein Konto}, an welche Adresse
+    Vereinsmails gehen. Stimmt die Adresse nicht, sagen Sie dem Vorstand
+    Bescheid.
+  \item[Kann ich den Newsletter abbestellen?]
+    Nein. Über den Newsletter verschickt der Verein Mitteilungen an seine
+    Mitglieder, zum Beispiel Einladungen zur Mitgliederversammlung.
+  \item[Smartphone mit der Authenticator-App verloren.]
+    Melden Sie sich mit einem Wiederherstellungscode an und richten Sie die
+    App neu ein. Haben Sie keine Codes, wenden Sie sich an den Vorstand.
+\end{description}
+
+% ------------------------------------------------------------------
+\section{Hilfe}
+
+Bei Fragen zu Ihrem Konto, zu Ihrer Stufe oder zu Ihren E-Mail-Adressen
+wenden Sie sich bitte an den Vorstand des Fördervereins.
+
+{\small\color{dsgrau} Die Bildschirmfotos stammen aus einer Testinstallation
+mit Beispieldaten; Personen, Beiträge und Bilder sind erfunden.}
+
+\end{document}

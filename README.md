@@ -102,6 +102,23 @@ Auf dem Server:
 | `sudo fv-web-restore -l` / `-t` | Sicherungen anzeigen / Wiederherstellung testen |
 | `/etc/fv-web/env` | Einstellungen, z. B. Mailserver (`FV_MAIL=smtp`, `FV_SMTP_*`) |
 
+**Domain ändern** (oder zum Testen eine andere Domain verwenden): Der Code ist nicht an die
+Domain gebunden. Das Skript einfach mit der neuen Domain und `-U` aufrufen; es passt
+Einstellungen und Caddy an und startet die Anwendung neu. Angemeldete Personen müssen sich
+danach neu anmelden.
+
 Jede Installation: Sicherung → Migration → Neustart → Statusprüfung. Startet die neue
 Version nicht, wird automatisch die vorige wieder aktiviert (Migrationen werden dabei
 nicht zurückgenommen).
+
+## Übernahme aus Drupal
+
+`scripts/drupal-export.sh` läuft als root auf dem bisherigen Drupal-Server und **ändert dort
+nichts**. Es legt unter `/root/drupal-export-<zeit>/` ab:
+
+- `sicherung/` – vollständige Sicherung (Datenbank, Dateien, settings.php) zum Aufbewahren;
+  enthält Benutzerkonten und Zugangsdaten, **nicht weitergeben**
+- `inhalte.tar.gz` – Übersicht und öffentliche Inhalte (Seiten, Adressen, Texte, verwendete
+  Dateien) für die Übernahme
+
+Die Inhalte gehören nicht ins Repository.

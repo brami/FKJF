@@ -413,7 +413,7 @@ phase_base() {
   apt-get update -q
   apt-get -y -q -o Dpkg::Options::=--force-confdef -o Dpkg::Options::=--force-confold full-upgrade
   apt_install ca-certificates curl sudo dbus ufw fail2ban python3-systemd \
-              unattended-upgrades apt-listchanges jq bind9-dnsutils rsync restic git \
+              unattended-upgrades apt-listchanges jq bind9-dnsutils rsync restic \
               python3 python3-venv postgresql caddy
   log "Python $(python3 -V | cut -d' ' -f2) | PostgreSQL $(runuser -u postgres -- psql -tAc 'SHOW server_version' | cut -d' ' -f1) | $(caddy version | cut -d' ' -f1)"
 
@@ -508,11 +508,7 @@ EOF
   ensure_kv "$ENVF" FV_SMTP_PASSWORD ""
   ensure_kv "$ENVF" FV_SMTP_TLS "starttls"
   ensure_kv "$ENVF" FV_ADMINS ""
-  # Domainabhängige Werte bei jedem Lauf setzen
-  local hosts="$DOMAIN"; [[ "$WITH_WWW" == 1 ]] && hosts="$DOMAIN,www.$DOMAIN"
-  set_kv "$ENVF" FV_ALLOWED_HOSTS "$hosts"
-  set_kv "$ENVF" FV_CSRF_TRUSTED_ORIGINS "https://$DOMAIN"
-  set_kv "$ENVF" FV_BASIS_URL "https://$DOMAIN"
+  # Domainabhängige Werte setzt die Phase "tool" (läuft auch mit -U, z. B. bei Domainwechsel)
   log "E-Mail-Versand: $(getkv "$ENVF" FV_MAIL)$([[ "$(getkv "$ENVF" FV_MAIL)" == datei ]] && echo " (nichts wird verschickt; Mails liegen in $DATA/mails)")"
 
   step "PostgreSQL"
@@ -578,7 +574,7 @@ EOF
   step "Caddy"
   systemctl enable caddy >/dev/null
   systemctl restart caddy   # neue Gruppenzugehörigkeit übernehmen
-  log "Caddyfile schreibt fv-web-update (nächste Phase)."
+  if app_installed; then write_caddyfile app; else write_caddyfile platzhalter; fi
 
   step "Datensicherung"
   [[ -f "$BENV" ]] || { ( umask 077; echo "# Datensicherung – Einstellungen (nur root)" > "$BENV" ); }
@@ -758,6 +754,20 @@ phase_tool() {
   set_kv "$DENV" DOMAIN "$DOMAIN"
   set_kv "$DENV" WITH_WWW "$WITH_WWW"
   set_kv "$DENV" ACME_EMAIL "$ACME_EMAIL"
+
+  # Domain in den Einstellungen der Anwendung (bei jedem Lauf, auch mit -U)
+  local hosts="$DOMAIN" vorher
+  [[ "$WITH_WWW" == 1 ]] && hosts="$DOMAIN,www.$DOMAIN"
+  vorher="$(getkv "$ENVF" FV_BASIS_URL)"
+  set_kv "$ENVF" FV_ALLOWED_HOSTS "$hosts"
+  set_kv "$ENVF" FV_CSRF_TRUSTED_ORIGINS "https://$DOMAIN"
+  set_kv "$ENVF" FV_BASIS_URL "https://$DOMAIN"
+  if [[ -n "$vorher" && "$vorher" != "https://$DOMAIN" ]]; then
+    log "Domain geändert: $vorher -> https://$DOMAIN"
+    if app_installed; then systemctl restart fv-web; log "Anwendung mit neuer Domain neu gestartet."; fi
+    log "Hinweis: Angemeldete Personen müssen sich unter der neuen Adresse neu anmelden;"
+    log "         bereits verschickte Einladungs-Links zeigen noch auf die alte Adresse."
+  fi
   log "Repository: $(getkv "$DENV" REPO_URL) (Standard-Stand: $(getkv "$DENV" DEFAULT_REF))"
   install -d -m 700 /root/.ssh
   if [[ ! -f /root/.ssh/fv-web-deploy ]]; then

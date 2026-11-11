@@ -94,6 +94,18 @@ NACHTRAG = {
     "Please contact us if you have any trouble resetting your password.":
         "Bitte wenden Sie sich an uns, wenn das Zurücksetzen des Passworts nicht klappt.",
 }
+# Texte von Django 6.1, die in dessen deutscher Übersetzung noch fehlen
+NACHTRAG.update({
+    "Run": "Ausführen",
+    "- Select an option -": "– Bitte auswählen –",
+    "After you’ve created a user, you’ll be able to edit more user options.":
+        "Nach dem Anlegen können Sie weitere Angaben bearbeiten.",
+    "In case you’ve forgotten, you are:": "Zur Erinnerung, Sie sind:",
+    "Disable password-based authentication": "Anmeldung mit Passwort deaktivieren",
+    "Enable password-based authentication": "Anmeldung mit Passwort aktivieren",
+    "This action will <strong>enable</strong> password-based authentication for this user.":
+        "Damit wird die Anmeldung mit Passwort für diesen Benutzer <strong>aktiviert</strong>.",
+})
 for msgid, sie in NACHTRAG.items():
     po.append(polib.POEntry(msgid=msgid, msgstr=sie))
 po.save(sys.argv[2] + "/django.po")

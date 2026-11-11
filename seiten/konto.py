@@ -185,6 +185,10 @@ class ZweiFaktorPflichtMiddleware:
                 and rechte.darf_bearbeiten(user)
                 and not request.path.startswith(self.FREI)
                 and not is_mfa_enabled(user, ["totp"])):
+            # Hinweis, warum man hier landet (wird auf der Einrichtungsseite angezeigt)
+            messages.info(request, "Wer Seiten bearbeiten darf, muss die Zwei-Faktor-Anmeldung "
+                                   "verwenden. Bitte richten Sie sie jetzt ein; danach können "
+                                   "Sie die Webseite wie gewohnt nutzen.")
             return redirect("mfa_activate_totp")
         return self.get_response(request)
 

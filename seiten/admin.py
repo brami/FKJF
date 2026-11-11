@@ -104,6 +104,25 @@ class ProfilInline(admin.StackedInline):
     has_add_permission = has_change_permission = has_view_permission
 
 
+STUFE_HILFE = ("Die höchste Stufe bestimmt, was die Person sieht und ob sie Seiten bearbeiten darf. "
+               "Meist genügt eine.")
+
+
+class StufenFilter(admin.SimpleListFilter):
+    title = "Stufe"
+    parameter_name = "stufe"
+
+    def lookups(self, request, model_admin):
+        return [(str(s.gruppe_id), s.name) for s in Stufe.objects.order_by("rang")] + [("ohne", "ohne Stufe")]
+
+    def queryset(self, request, queryset):
+        if self.value() == "ohne":
+            return queryset.exclude(groups__stufe__isnull=False)
+        if self.value():
+            return queryset.filter(groups=self.value())
+        return queryset
+
+
 class BenutzerAnlegenForm(EindeutigeEmail, forms.ModelForm):
     einladen = forms.BooleanField(
         label="Einladung sofort per E-Mail senden", required=False, initial=True,
@@ -114,9 +133,10 @@ class BenutzerAnlegenForm(EindeutigeEmail, forms.ModelForm):
         model = User
         fields = ["username", "first_name", "last_name", "email", "groups"]
         widgets = {"groups": forms.CheckboxSelectMultiple}
+        labels = {"groups": "Stufe"}
         help_texts = {
             "username": "Zur Anmeldung, z. B. vorname.nachname. Anmelden geht auch mit der E-Mail-Adresse.",
-            "groups": "Die höchste Stufe bestimmt, was die Person sehen darf.",
+            "groups": STUFE_HILFE,
         }
 
     def __init__(self, *args, **kwargs):
@@ -138,6 +158,9 @@ class BenutzerAendernForm(EindeutigeEmail, forms.ModelForm):
         model = User
         fields = "__all__"
         widgets = {"groups": forms.CheckboxSelectMultiple}
+        labels = {"groups": "Stufe", "is_active": "Aktiv"}
+        help_texts = {"groups": STUFE_HILFE,
+                      "is_active": "Statt ausgeschiedene Personen zu löschen, hier den Haken entfernen."}
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -147,7 +170,7 @@ class BenutzerAendernForm(EindeutigeEmail, forms.ModelForm):
             self.fields["email"].required = True
 
 
-@admin.display(description="Gruppen")
+@admin.display(description="Stufe")
 def gruppen(user):
     return ", ".join(g.name for g in user.groups.all()) or "–"
 
@@ -165,7 +188,7 @@ class BenutzerAdmin(NurVorstand, UserAdmin):
                                         "groups", "einladen")}),)
     list_display = ("username", "first_name", "last_name", "email", "vereinsadresse", gruppen,
                     "is_active", "last_login")
-    list_filter = ("groups", "is_active")
+    list_filter = (StufenFilter, "is_active")
     search_fields = ("username", "first_name", "last_name", "email")
     ordering = ("last_name", "first_name", "username")
     readonly_fields = ("last_login", "date_joined")
@@ -216,7 +239,8 @@ class BenutzerAdmin(NurVorstand, UserAdmin):
 
     def _einladen(self, request, user):
         if not user.email:
-            self.message_user(request, f"{user}: keine E-Mail-Adresse – keine Einladung.", messages.WARNING)
+            self.message_user(request, f"Keine E-Mail-Adresse für {user} – keine Einladung gesendet.",
+                              messages.WARNING)
             return
         link = sende_einladung(user)
         if mails_werden_verschickt():

@@ -678,23 +678,39 @@ BACKUP
 #   sudo fv-web-restore -r <snapshot|latest> -E
 #                                           Produktion ERSETZEN: Datenbank fvweb und Anhänge
 #                                           (mit Rückfrage; vorher automatische Sicherung)
+#   sudo fv-web-restore -r <snapshot> -d <datei> [-d <datei> …]
+#                                           einzelne Dateien (Anhänge) zurücklegen, z. B. für
+#                                           fv-manage seite_wiederherstellen
 set -Eeuo pipefail
 BENV=/etc/fv-web/backup.env; KEY=/root/.ssh/fv-web-backup
 getkv() { grep -m1 "^$1=" "$BENV" | cut -d= -f2- | sed 's/^"//; s/"$//'; }
 log() { printf '%s %s\n' "$(date '+%F %T')" "$*"; }
 [[ $EUID -eq 0 ]] || { echo "Bitte mit sudo ausführen." >&2; exit 1; }
-SNAP=latest; MODE=""
-while getopts ":lr:tE" o; do
+SNAP=latest; MODE=""; DATEIEN=()
+while getopts ":lr:tEd:" o; do
   case "$o" in l) MODE=liste ;; r) SNAP="$OPTARG" ;; t) MODE="test" ;; E) MODE="echt" ;;
-    *) sed -n '2,9p' "$0" | sed 's/^# \{0,1\}//'; exit 2 ;; esac
+    d) MODE="dateien"; DATEIEN+=("$OPTARG") ;;
+    *) sed -n '2,12p' "$0" | sed 's/^# \{0,1\}//'; exit 2 ;; esac
 done
-[[ -n "$MODE" ]] || { sed -n '2,9p' "$0" | sed 's/^# \{0,1\}//'; exit 2; }
+[[ -n "$MODE" ]] || { sed -n '2,12p' "$0" | sed 's/^# \{0,1\}//'; exit 2; }
 export RESTIC_REPOSITORY RESTIC_PASSWORD
 RESTIC_REPOSITORY="$(getkv RESTIC_REPOSITORY)"; RESTIC_PASSWORD="$(getkv RESTIC_PASSWORD)"
 R=(restic); [[ "$RESTIC_REPOSITORY" == sftp:* ]] && R+=(-o "sftp.args=-i $KEY -o BatchMode=yes")
 if [[ "$MODE" == liste ]]; then
   echo "Lokale Dumps:"; ls -lh /var/backups/fv-web/*.dump 2>/dev/null | awk '{print "  "$5"  "$9}' || echo "  keine"
   echo "restic ($RESTIC_REPOSITORY):"; "${R[@]}" snapshots --host fv-web; exit 0
+fi
+if [[ "$MODE" == dateien ]]; then
+  for d in "${DATEIEN[@]}"; do
+    [[ "$d" == /var/lib/fv-web/private/* && "$d" != *..* ]] || { echo "Nur Dateien unter /var/lib/fv-web/private: $d" >&2; exit 1; }
+  done
+  inc=(); for d in "${DATEIEN[@]}"; do inc+=(--include "$d"); done
+  "${R[@]}" restore "$SNAP" --host fv-web --target / "${inc[@]}"
+  for d in "${DATEIEN[@]}"; do
+    if [[ -f "$d" ]]; then chown fvweb:fvweb "$d"; chmod 600 "$d"; log "zurück: $d"
+    else log "NICHT im Stand $SNAP: $d"; fi
+  done
+  exit 0
 fi
 TMP="$(mktemp -d)"; trap 'rm -rf "$TMP"' EXIT
 "${R[@]}" restore "$SNAP" --host fv-web --target "$TMP"

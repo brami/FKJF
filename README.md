@@ -119,6 +119,9 @@ Personen dieser und jeder höheren Stufe. Hat jemand mehrere Stufen, zählt die 
 - Die Verwaltung meldet immer über die normale Anmeldeseite an – die Zwei-Faktor-Anmeldung
   lässt sich dort nicht umgehen. Der Vorstand kann keine Administratorkonten sehen oder
   ändern, niemanden zum Administrator machen und keine fremden Passwörter setzen.
+- Zwei-Faktor einer Person zurücksetzen: `sudo fv-manage zwei_faktor_zuruecksetzen <name|e-mail>`
+- Gelöschte Seite zurückholen: `sudo fv-manage seite_wiederherstellen [<nr>]`
+  (fehlende Anhang-Dateien mit `sudo fv-web-restore -r <stand> -d <datei> …`)
 - Erstes Vorstandskonto auf dem Server: `sudo fv-manage vorstand_anlegen <name> <e-mail> --admin`
   (Stufe: die höchste mit Bearbeitungsrecht, oder `--stufe <Name>`)
 

@@ -1,0 +1,81 @@
+# Automatische Prüfung bei jedem Push und Pull Request
+name: Tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: tests-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  tests:
+    name: Tests (${{ matrix.datenbank }})
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        datenbank: [sqlite, postgresql]
+    services:
+      postgres:
+        # wie auf dem Server (Debian 13: PostgreSQL 17)
+        image: postgres:17
+        env:
+          POSTGRES_USER: fvweb
+          POSTGRES_PASSWORD: fvweb
+          POSTGRES_DB: fvweb
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U fvweb"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+    env:
+      FV_DB_NAME: ${{ matrix.datenbank == 'postgresql' && 'fvweb' || '' }}
+      FV_DB_USER: fvweb
+      FV_DB_PASSWORD: fvweb
+      FV_DB_HOST: localhost
+      FV_DB_PORT: "5432"
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.13"   # wie auf dem Server (Debian 13)
+          cache: pip
+          cache-dependency-path: requirements*.txt
+
+      - name: Abhängigkeiten installieren
+        run: pip install -r requirements-dev.txt
+
+      - name: Abhängigkeiten konsistent
+        run: pip check
+
+      - name: Fehlende Migrationen?
+        run: FV_DEBUG=1 python manage.py makemigrations --check --dry-run
+
+      - name: Prüfung wie bei der Installation (check --deploy)
+        env:
+          FV_SECRET_KEY: nur-fuer-die-pruefung-nur-fuer-die-pruefung-nur-fuer-die-pruefung
+          FV_ALLOWED_HOSTS: example.org
+          FV_MAIL: datei
+        run: python manage.py check --deploy --fail-level ERROR
+
+      - name: Tests
+        run: python -m pytest -q
+
+  installationsskript:
+    name: Installationsskript (shellcheck)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v5
+      - name: shellcheck
+        run: |
+          bash -n deploy/setup-server-fv-web.sh
+          shellcheck -S warning deploy/setup-server-fv-web.sh

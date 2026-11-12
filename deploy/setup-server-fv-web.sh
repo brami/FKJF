@@ -889,8 +889,33 @@ manage_in() {  # manage.py als Dienstbenutzer; $1 = Code-Verzeichnis
     "$ENVF" "$dir" "$@"
 }
 
+wartungsseite() {  # statische Seite, die Caddy zeigt, solange die Anwendung nicht antwortet
+  install -d -o root -g root -m 755 "$DATA/wartung"
+  cat > "$DATA/wartung/index.html" <<'HTML'
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="robots" content="noindex">
+  <meta http-equiv="refresh" content="30">
+  <title>Wartung</title>
+  <link rel="stylesheet" href="/static/css/fv.css">
+</head>
+<body>
+  <main id="inhalt" class="rahmen">
+    <h1>Die Webseite wird gerade aktualisiert</h1>
+    <p>In wenigen Minuten ist sie wieder erreichbar. Diese Seite lädt sich alle 30 Sekunden
+      von selbst neu.</p>
+  </main>
+</body>
+</html>
+HTML
+}
+
 write_caddyfile() {  # $1 = app | platzhalter
   local tmp; tmp="$(mktemp)"
+  [[ "$1" == app ]] && wartungsseite
   {
     if [[ -n "$ACME_EMAIL" ]]; then printf '{\n\temail %s\n}\n\n' "$ACME_EMAIL"; fi
     cat <<CADDY
@@ -928,6 +953,17 @@ CADDY
 	}
 	handle {
 		reverse_proxy unix//run/fv-web/gunicorn.sock
+	}
+	# Anwendung antwortet nicht (Update, Neustart, Ausfall): Wartungsseite statt leerer Fehlerseite
+	handle_errors {
+		@ausfall expression `{err.status_code} in [502, 503, 504]`
+		handle @ausfall {
+			root * /var/lib/fv-web/wartung
+			rewrite * /index.html
+			header Retry-After 60
+			header Cache-Control no-store
+			file_server
+		}
 	}
 }
 CADDY

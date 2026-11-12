@@ -176,7 +176,7 @@ def test_bilder_geschuetzter_seiten_nur_mit_recht(client, variante):
     intern = Seite.objects.create(titel="Intern", stufe=S(MITGLIEDER))
     a = Anhang.objects.create(seite=intern, datei=foto("eins.jpg", (800, 600)))
     url = reverse("anhang_variante", args=[a.pk, variante])
-    assert client.get(url).status_code == 302          # nicht angemeldet -> Anmeldung
+    assert client.get(url).status_code == 404          # nicht angemeldet: neutral (Variante A)
     assert a.vorschau_url() not in client.get(reverse("startseite")).content.decode()
     foerder = User.objects.create_user("f", "f@example.org", "pw")
     foerder.groups.add(Group.objects.get(name="Fördermitglieder"))

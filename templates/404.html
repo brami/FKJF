@@ -1,0 +1,21 @@
+{% extends "base.html" %}
+
+{% block titel %}Nicht gefunden – {{ fv_webseite.name }}{% endblock %}
+{% block robots %}<meta name="robots" content="noindex">{% endblock %}
+
+{% block inhalt %}
+  <h1>Seite nicht gefunden</h1>
+  {% if request.user.is_authenticated %}
+    <p>Diese Seite gibt es nicht, oder sie ist für Ihre Stufe nicht freigegeben.</p>
+    <p class="hinweis">Wenn Sie meinen, dass Sie die Seite sehen sollten, wenden Sie sich bitte an
+      {{ fv_webseite.ansprechpartner }}.</p>
+    <p><a href="{% url 'startseite' %}">Zur Startseite</a></p>
+  {% else %}
+    <p>Diese Seite gibt es nicht, oder sie ist nur für angemeldete Personen sichtbar.</p>
+    <div class="knoepfe">
+      <a class="knopf" href="{% url 'account_login' %}?next={{ request.get_full_path|urlencode }}">Anmelden</a>
+      <a href="{% url 'startseite' %}">Zur Startseite</a>
+    </div>
+    <p class="hinweis">Nach der Anmeldung gelangen Sie direkt zu dieser Seite, sofern Sie sie sehen dürfen.</p>
+  {% endif %}
+{% endblock %}

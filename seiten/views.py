@@ -1,4 +1,3 @@
-from django.contrib.auth.views import redirect_to_login
 from django.db import connection
 from django.http import FileResponse, Http404, HttpResponse
 from django.shortcuts import get_object_or_404, render
@@ -9,12 +8,12 @@ from .models import Anhang, Seite
 
 
 def _verweigert(request):
-    """Nicht angemeldet: zur Anmeldung. Angemeldet ohne Recht: 404.
+    """Ohne Leserecht: immer 404 – wie bei einer Seite, die es nicht gibt.
 
-    Ein 404 statt 403 verrät nicht, dass es eine geschützte Seite gibt.
+    So verrät die Webseite nicht, dass unter der Adresse eine geschützte Seite liegt.
+    Die Fehlerseite (404.html) bietet Nicht-Angemeldeten die Anmeldung an und führt
+    danach zur gewünschten Adresse zurück.
     """
-    if not request.user.is_authenticated:
-        return redirect_to_login(request.get_full_path())
     raise Http404
 
 
@@ -81,3 +80,8 @@ def gesund(request):
     antwort = HttpResponse("ok", content_type="text/plain")
     antwort["Cache-Control"] = "no-store"
     return antwort
+
+
+def csrf_fehler(request, reason=""):
+    """Formular abgelaufen o. Ä. (CSRF) – verständlich statt Django-Technikseite."""
+    return render(request, "403_csrf.html", status=403)

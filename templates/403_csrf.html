@@ -1,0 +1,18 @@
+{% extends "base.html" %}
+
+{% block titel %}Formular abgelaufen – {{ fv_webseite.name }}{% endblock %}
+{% block robots %}<meta name="robots" content="noindex">{% endblock %}
+
+{% block inhalt %}
+  <h1>Formular abgelaufen</h1>
+  <p>Das Formular konnte aus Sicherheitsgründen nicht angenommen werden. Meist war es zu lange
+    geöffnet, oder Sie haben sich zwischendurch ab- und wieder angemeldet.</p>
+  <ol>
+    <li>Gehen Sie mit der Zurück-Taste des Browsers zum Formular und kopieren Sie längere Texte,
+      die Sie eingegeben haben (markieren, Strg+C).</li>
+    <li>Laden Sie die Seite neu (F5) und geben Sie die Daten noch einmal ein.</li>
+  </ol>
+  <p>Tritt der Fehler immer wieder auf, prüfen Sie bitte, ob Ihr Browser Cookies für diese
+    Webseite zulässt.</p>
+  <p><a href="{% url 'startseite' %}">Zur Startseite</a></p>
+{% endblock %}

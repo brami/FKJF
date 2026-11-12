@@ -219,3 +219,33 @@ nichts**. Es legt unter `/root/drupal-export-<zeit>/` ab:
   Dateien) für die Übernahme
 
 Die Inhalte gehören nicht ins Repository.
+
+## Lizenz
+
+Copyright (C) 2026 Michael Bramer
+
+**Programm** (alles außer `docs/` und `static/vendor/`): Dieses Programm ist freie
+Software. Sie können es unter den Bedingungen der **GNU Affero General Public License**,
+wie von der Free Software Foundation veröffentlicht, weitergeben und/oder verändern,
+entweder gemäß Version 3 der Lizenz oder (nach Ihrer Wahl) jeder späteren Version
+(SPDX: `AGPL-3.0-or-later`, Text in [`LICENSE`](LICENSE)). Die Veröffentlichung erfolgt
+in der Hoffnung, dass es nützlich ist, aber ohne irgendeine Garantie.
+
+Wer eine **veränderte Fassung als Webseite betreibt**, muss ihren Nutzern den Quellcode
+dieser Fassung anbieten (AGPL § 13). Die Webseite verlinkt dazu in der Fußzeile auf
+`FV_QUELLCODE_URL` (Voreinstellung: dieses Repository) – bei eigenen Änderungen auf die
+eigene Fassung umstellen.
+
+**Dokumentation** (`docs/`, einschließlich Bildschirmfotos und der LaTeX-Vorlage
+`debsupport.sty`): **Creative Commons Namensnennung – Weitergabe unter gleichen
+Bedingungen 4.0 International** (SPDX: `CC-BY-SA-4.0`, Text in
+[`docs/LICENSE`](docs/LICENSE)). Namensnennung: „Michael Bramer“.
+
+**Fremde Bestandteile** behalten ihre Lizenz: TinyMCE in `static/vendor/tinymce/`
+(GPL-2.0-or-later, siehe `license.md` und `notices.txt` dort, genutzt mit dem
+Lizenzschlüssel `gpl`), Python-Abhängigkeiten aus `requirements.txt` (BSD, MIT,
+Apache-2.0, LGPL-3.0 – alle mit der AGPL-3.0 verträglich).
+
+Inhalte der Webseite (Seiten, Bilder, Anhänge in der Datenbank und der Ablage) gehören
+nicht zum Programm und fallen nicht unter diese Lizenzen.
+

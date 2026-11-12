@@ -37,7 +37,7 @@
   <footer class="fuss">
     <div class="rahmen">
       {# Links auf Impressum/Datenschutz folgen, sobald die Seiten angelegt sind #}
-      &copy; {{ fv_webseite.fuss }}
+      &copy; {{ fv_webseite.fuss }}{% if fv_quellcode %} · <a href="{{ fv_quellcode }}" rel="license">Quellcode (AGPL)</a>{% endif %}
     </div>
   </footer>
 </body>

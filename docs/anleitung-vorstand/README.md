@@ -23,3 +23,8 @@ python docs/anleitung-vorstand/werkzeuge/fotos_vorstand.py . /tmp/bilder_vorstan
 Danach Ränder abschneiden (Webseite: x = 250 … 1950; Verwaltung je nach Bild) und
 nach `bilder/` kopieren. Das Konto `vera.vorsitz` nutzt ein festes Testgeheimnis für
 die Zwei-Faktor-Anmeldung (`vorstand_daten.py`) – nur für die Testinstanz.
+
+## Lizenz
+
+© 2026 Michael Bramer. Text, Bilder und Vorlage stehen unter
+[CC BY-SA 4.0](../LICENSE) (Namensnennung: „Michael Bramer“).

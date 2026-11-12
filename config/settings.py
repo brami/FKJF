@@ -263,3 +263,7 @@ FV_MAIL_LOESCHFRIST_TAGE = int(env("FV_MAIL_LOESCHFRIST_TAGE", "90"))  # gesperr
 FV_MAIL_VORWARNUNG_TAGE = int(env("FV_MAIL_VORWARNUNG_TAGE", "14"))    # Erinnerung an den Vorstand
 FV_MAIL_SPERRFRIST_TAGE = int(env("FV_MAIL_SPERRFRIST_TAGE", "365"))   # frei gewordene Adressen
 FV_MAIL_ANLEITUNG_URL = env("FV_MAIL_ANLEITUNG_URL", "")              # Link zur Anleitung (optional)
+
+# Quellcode der laufenden Fassung (AGPL § 13): Link in der Fußzeile.
+# Bei eigenen Änderungen auf die eigene, veröffentlichte Fassung zeigen lassen.
+FV_QUELLCODE_URL = env("FV_QUELLCODE_URL", "https://github.com/brami/FKJF")

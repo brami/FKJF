@@ -90,3 +90,10 @@ def test_einstellungen_nur_fuer_administratoren(client):
         "unterschrift": "Wir"})
     assert r.status_code == 302 and Webseite.aktuell().name == "Neu"
     assert client.get(reverse("admin:seiten_webseite_add")).status_code == 403
+
+
+def test_fusszeile_verlinkt_quellcode(client, settings):
+    """AGPL § 13: Nutzer der Webseite erhalten Zugang zum Quellcode."""
+    settings.FV_QUELLCODE_URL = "https://example.org/quellcode"
+    html = client.get("/").content.decode()
+    assert '<a href="https://example.org/quellcode" rel="license">Quellcode (AGPL)</a>' in html

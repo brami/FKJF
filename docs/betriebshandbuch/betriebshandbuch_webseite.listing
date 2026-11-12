@@ -1,0 +1,2 @@
+sudo fv-manage seite_wiederherstellen          # gelöschte Seiten mit Nummer
+sudo fv-manage seite_wiederherstellen 42       # Seite 42 zurückholen

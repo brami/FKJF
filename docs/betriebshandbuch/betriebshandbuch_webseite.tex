@@ -138,6 +138,7 @@ fail2ban, ufw             & Schutz für SSH, Firewall (offen: SSH, 80, 443) \\
 /var/lib/fv-web/private    & Anhänge und Bilder (nur für die Anwendung lesbar) \\
 /var/lib/fv-web/static     & CSS, JavaScript, Editor (liefert Caddy aus) \\
 /var/lib/fv-web/mails      & E-Mails als Dateien, solange kein Mailserver eingetragen ist \\
+/var/lib/fv-web/wartung    & Wartungsseite (schreibt \cmd{fv-web-update}) \\
 /var/backups/fv-web        & Datenbank-Dumps der letzten 7 Tage \\
 /var/log/fv-web-update.log & Protokoll aller Updates \\
 /var/log/caddy/fv-web.log  & Zugriffe auf die Webseite \\
@@ -253,7 +254,9 @@ ssh fkjs@foerderverein-kf-jf-kreuzau.de sudo fv-web-update
 Konfiguration, \textbf{sichert die Datenbank}, migriert sie, sammelt die statischen
 Dateien, schaltet um und prüft, ob die Webseite antwortet (\pfad{/gesund/}).
 Startet die neue Version nicht, wird automatisch die vorige wieder aktiviert.
-Die Webseite ist dabei nur wenige Sekunden nicht erreichbar.
+Die Webseite ist dabei nur wenige Sekunden nicht erreichbar; in dieser Zeit (und bei
+jedem Ausfall der Anwendung) zeigt Caddy eine Wartungsseite, die sich alle 30~Sekunden
+selbst neu lädt.
 
 \subsection{Weitere Möglichkeiten}
 
@@ -474,7 +477,7 @@ sudo less /var/log/caddy/fv-web.log  & Zugriffe (JSON) \\
 \subsection{Häufige Störungen}
 
 \begin{description}[style=nextline,leftmargin=0pt,itemsep=0.5\baselineskip]
-  \item[Webseite zeigt „502“ oder lädt nicht]
+  \item[Webseite zeigt dauerhaft die Wartungsseite oder lädt nicht]
     \cmd{systemctl status fv-web}, \cmd{journalctl -u fv-web -n 50}. Nach einem
     fehlgeschlagenen Update: \cmd{sudo fv-web-update -{}-status}, ggf.\
     \cmd{-{}-zurueck}. Läuft PostgreSQL?

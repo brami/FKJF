@@ -233,7 +233,10 @@ else:
 # Ohne Namen (nur Adresse) wird der Name der Webseite als Absendername ergänzt
 DEFAULT_FROM_EMAIL = env("FV_MAIL_ABSENDER", "webmaster@localhost")
 SERVER_EMAIL = DEFAULT_FROM_EMAIL
-ADMINS = [a for a in env("FV_ADMINS", "").split(",") if a]
+# Fehlermails: Bei jedem Programmfehler (500) erhalten diese Adressen eine E-Mail mit Details.
+ADMINS = [a.strip() for a in env("FV_ADMINS", "").split(",") if a.strip()]
+# Betreff-Anfang dieser Fehlermails, z. B. "[foerderverein-kf-jf-kreuzau.de]" (zum Filtern)
+EMAIL_SUBJECT_PREFIX = env("FV_ADMINS_BETREFF", "[Webseite]").strip() + " "
 # Basis-Adresse für Links in E-Mails und Befehlen, z. B. https://foerderverein-kf-jf-kreuzau.de
 FV_BASIS_URL = env("FV_BASIS_URL", "http://127.0.0.1:8000").rstrip("/")
 

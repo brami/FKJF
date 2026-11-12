@@ -5,6 +5,9 @@ mail_archive           Verteiler mit Archiv: nummer (Verzeichnis), Adresse, Aufb
                        Tagen (NULL = unbegrenzt), aktiv.
 dovecot_archiv_leser   Wer welches Archiv lesen darf: aktive Empfänger des Verteilers mit
                        Postfach (über Stufe oder persönlich) – benutzer = Vereinsadresse.
+                       Rechte im Mailserver: nur „lr“ (sehen, lesen) – aus dem Mailprogramm
+                       wird nie in ein Archiv geschrieben. Archivkopien legt der Mailserver
+                       als gelesen ab; gelöscht wird nur auf dem Server.
 
 Python-Gegenstücke: seiten.mail.exim_plus_gesperrt(), mail_archive(), archiv_leser_alle().
 """

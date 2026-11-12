@@ -477,7 +477,8 @@ class Verteiler(models.Model):
         "Archiv", default=False,
         help_text="Jede Mail an den Verteiler und jede Mail, die im Namen des Verteilers verschickt "
                   "wird, zusätzlich im Ordner „Archiv“ ablegen. Lesen dürfen ihn alle, die gerade "
-                  "Empfänger sind und ein Postfach haben – ein neuer Vorstand sieht ihn sofort.",
+                  "Empfänger sind und ein Postfach haben – ein neuer Vorstand sieht ihn sofort. "
+                  "Das Archiv ist im Mailprogramm nur lesbar.",
     )
     archiv_tage = models.PositiveIntegerField(
         "Aufbewahrung (Tage)", null=True, blank=True,

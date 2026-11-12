@@ -18,7 +18,7 @@ class Migration(migrations.Migration):
             name="archiv",
             field=models.BooleanField(
                 default=False,
-                help_text="Jede Mail an den Verteiler und jede Mail, die im Namen des Verteilers verschickt wird, zusätzlich im Ordner „Archiv“ ablegen. Lesen dürfen ihn alle, die gerade Empfänger sind und ein Postfach haben – ein neuer Vorstand sieht ihn sofort.",
+                help_text="Jede Mail an den Verteiler und jede Mail, die im Namen des Verteilers verschickt wird, zusätzlich im Ordner „Archiv“ ablegen. Lesen dürfen ihn alle, die gerade Empfänger sind und ein Postfach haben – ein neuer Vorstand sieht ihn sofort. Das Archiv ist im Mailprogramm nur lesbar.",
                 verbose_name="Archiv",
             ),
         ),

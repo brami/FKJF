@@ -172,6 +172,29 @@ class Webseite(models.Model):
         return self.inhaber or self.name
 
 
+class Kreis(models.Model):
+    """Benannte Personenliste, z. B. „Ausflug 2027“ – beschränkt Seiten und Anhänge
+    zusätzlich zur Stufe; auch als Newsletter-Empfänger und in Verteilern nutzbar."""
+
+    name = models.CharField(max_length=100, unique=True)
+    beschreibung = models.CharField(max_length=200, blank=True)
+    personen = models.ManyToManyField(settings.AUTH_USER_MODEL, blank=True, related_name="kreise")
+
+    history = HistoricalRecords(verbose_name="Fassung", m2m_fields=[personen])
+
+    class Meta:
+        verbose_name = "Kreis"
+        verbose_name_plural = "Kreise"
+        ordering = ["name"]
+
+    def __str__(self):
+        return self.name
+
+
+KREIS_HILFE = ("Zusätzlich zur Stufe: nur Personen in diesem Kreis (und wer bearbeiten darf) "
+               "sehen das. Leer = keine Einschränkung.")
+
+
 class Seite(models.Model):
     titel = models.CharField(max_length=200)
     datum = models.DateField(default=timezone.localdate)
@@ -179,6 +202,10 @@ class Seite(models.Model):
         Stufe, verbose_name="Sichtbar für", null=True, blank=True,
         on_delete=models.PROTECT, related_name="seiten",
         help_text=f"Die Seite sehen diese Stufe und alle höheren. Leer = {OEFFENTLICH} (ohne Anmeldung).",
+    )
+    kreis = models.ForeignKey(
+        Kreis, verbose_name="Nur für Kreis", null=True, blank=True,
+        on_delete=models.PROTECT, related_name="seiten", help_text=KREIS_HILFE,
     )
     inhalt = models.TextField(blank=True)
     erstellt = models.DateTimeField(auto_now_add=True)
@@ -214,8 +241,16 @@ class Seite(models.Model):
 
     # Anhänge aufgeteilt: Bilder (Titelbild zuerst) und übrige Dateien.
     # Arbeiten mit .all(), damit prefetch_related("anhaenge") genutzt wird.
+    # Sichtbar sind nur die Anhänge, die rechte.anhaenge_zuordnen() für die
+    # angemeldete Person eingetragen hat; ohne Zuordnung nur die ohne Kreis.
+    def sichtbare_anhaenge(self):
+        zugeordnet = getattr(self, "_fv_anhaenge", None)
+        if zugeordnet is not None:
+            return zugeordnet
+        return [a for a in self.anhaenge.all() if a.kreis_id is None]
+
     def bilder(self):
-        bilder = [a for a in self.anhaenge.all() if a.ist_bild]
+        bilder = [a for a in self.sichtbare_anhaenge() if a.ist_bild]
         return sorted(bilder, key=lambda a: (not a.titelbild, a.pk))
 
     def titelbild(self):
@@ -226,7 +261,7 @@ class Seite(models.Model):
         return self.bilder()[1:]
 
     def dateien(self):
-        return [a for a in self.anhaenge.all() if not a.ist_bild]
+        return [a for a in self.sichtbare_anhaenge() if not a.ist_bild]
 
 
 def anhang_pfad(instance, filename):
@@ -263,6 +298,10 @@ class Anhang(models.Model):
         "Titelbild", default=False,
         help_text="Erscheint oben auf der Seite und als Vorschau auf der Startseite. "
                   "Ohne Auswahl ist es das erste Bild.",
+    )
+    kreis = models.ForeignKey(
+        Kreis, verbose_name="Nur für Kreis", null=True, blank=True,
+        on_delete=models.PROTECT, related_name="anhaenge", help_text=KREIS_HILFE,
     )
     bild = models.FileField(storage=private_storage, upload_to=anhang_pfad, blank=True, editable=False)
     vorschaubild = models.FileField(storage=private_storage, upload_to=anhang_pfad, blank=True,
@@ -398,6 +437,7 @@ class Versand(models.Model):
     ankuendigung = models.TextField("Ankündigung", blank=True)
     mit_anhaengen = models.BooleanField("Anhänge mitsenden", default=False)
     stufen = models.ManyToManyField(Stufe, blank=True, related_name="+")
+    kreise = models.ManyToManyField(Kreis, blank=True, related_name="+")
     ohne_stufe = models.BooleanField("Konten ohne Stufe", default=False)
     status = models.CharField(max_length=12, choices=Status.choices, default=Status.LAEUFT)
     erstellt = models.DateTimeField(auto_now_add=True)
@@ -474,6 +514,10 @@ class Verteiler(models.Model):
     personen = models.ManyToManyField(
         settings.AUTH_USER_MODEL, blank=True, related_name="verteiler",
         verbose_name="Empfänger: Personen",
+    )
+    kreise = models.ManyToManyField(
+        Kreis, blank=True, related_name="verteiler", verbose_name="Empfänger: Kreise",
+        help_text="Alle aktiven Personen dieser Kreise, z. B. die Mitfahrenden eines Ausflugs.",
     )
     weitere_adressen = models.TextField(
         "Weitere Empfänger", blank=True,

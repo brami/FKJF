@@ -34,6 +34,7 @@
             {% if not v.aktiv %}<br><span class="hilfe">ausgeschaltet</span>{% elif not v.offen %}<br><span class="hilfe">nur Vereinspostfächer dürfen schreiben</span>{% endif %}
             {% if v.archiv %}<br><span class="hilfe">mit Archiv ({% if v.archiv_tage %}{{ v.archiv_tage }} Tage{% else %}unbegrenzt{% endif %})</span>{% endif %}</td>
           <td>{% if v.stufen.all %}<div>Stufe {% for s in v.stufen.all %}{{ s.name }}{% if not forloop.last %}, {% endif %}{% endfor %}</div>{% endif %}
+              {% if v.kreise.all %}<div>Kreis {% for k in v.kreise.all %}{{ k.name }}{% if not forloop.last %}, {% endif %}{% endfor %}</div>{% endif %}
               {% if personen %}<div>{% for u in personen %}{{ u.get_full_name|default:u.username }}{% if not forloop.last %}, {% endif %}{% endfor %}</div>{% endif %}
               {% if weitere %}<div>weitere: {{ weitere|join:", " }}</div>{% endif %}</td>
           <td>{{ alle|join:", "|default:"niemand" }}</td></tr>

@@ -8,6 +8,7 @@
     <p class="meta">
       <time datetime="{{ seite.datum|date:'Y-m-d' }}">{{ seite.datum|date:"j. F Y" }}</time>
       {% if seite.stufe %}<span class="marke-stufe">{{ seite.stufe.name }}</span>{% endif %}
+      {% if seite.kreis %}<span class="marke-stufe">Kreis {{ seite.kreis.name }}</span>{% endif %}
     </p>
     <h1>{{ seite.titel }}</h1>
     {% with titelbild=seite.titelbild %}{% if titelbild %}
@@ -34,7 +35,7 @@
         <h2>Anhänge</h2>
         <ul>
           {% for a in dateien %}
-            <li><a href="{{ a.get_absolute_url }}">{{ a }}</a></li>
+            <li><a href="{{ a.get_absolute_url }}">{{ a }}</a>{% if a.kreis %} <span class="marke-stufe">nur Kreis {{ a.kreis.name }}</span>{% endif %}</li>
           {% endfor %}
         </ul>
       </section>

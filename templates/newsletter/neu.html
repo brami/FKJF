@@ -6,7 +6,9 @@
 {% block inhalt %}
   <p><a href="{{ seite.get_absolute_url }}">← Zurück zur Seite</a></p>
   <h1>Als Newsletter versenden</h1>
-  <p>„{{ seite.titel }}“ (sichtbar für: {{ seite.stufe_name }})</p>
+  <p>„{{ seite.titel }}“ (sichtbar für: {{ seite.stufe_name }}{% if seite.kreis %}, nur Kreis {{ seite.kreis }}{% endif %})</p>
+  {% if seite.kreis %}<p class="hinweis">Diese Seite ist auf den Kreis „{{ seite.kreis }}“ beschränkt. Die E-Mail erhalten
+    nur Personen in diesem Kreis (und wer bearbeiten darf) – auch wenn Sie Stufen auswählen.</p>{% endif %}
 
   <form method="post" class="formular bearbeiten">{% csrf_token %}
     {{ form.non_field_errors }}
@@ -17,6 +19,13 @@
       <p class="hilfe">Zur Verfügung stehen die Stufe der Seite und alle höheren.
         Höhere Stufen erhalten die E-Mail zuerst.</p>
     </div>
+    {% if form.kreise %}
+    <div class="feld">
+      <label>{{ form.kreise.label }}</label>
+      {{ form.kreise }}
+      <p class="hilfe">{{ form.kreise.help_text }} Anhänge mit eigenem Kreis gehen nur an Personen in diesem Kreis.</p>
+    </div>
+    {% endif %}
     <div class="feld">
       <label>{{ form.modus.label }}</label>
       {{ form.modus }}

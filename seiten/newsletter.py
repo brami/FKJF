@@ -28,9 +28,9 @@ from django.utils import timezone
 from django.utils.html import strip_tags
 from django.views.decorators.http import require_http_methods, require_POST
 
-from . import konto
+from . import konto, rechte
 from .bearbeiten import nur_vorstand
-from .models import Empfang, Seite, Stufe, Versand, Webseite, zustelladresse
+from .models import Empfang, Kreis, Seite, Stufe, Versand, Webseite, zustelladresse
 from .stufen import OEFFENTLICH_RANG
 
 HERZSCHLAG = "fv_newsletter_dienst"
@@ -44,26 +44,34 @@ def stufen_fuer(seite):
     return Stufe.objects.filter(rang__gte=rang).order_by("-rang")
 
 
-def empfaenger(seite, stufen, ohne_stufe=False, ausser=None):
-    """Aktive Konten in den gewählten Stufen, höchste Stufe zuerst.
+def empfaenger(seite, stufen, ohne_stufe=False, ausser=None, kreise=()):
+    """Aktive Konten in den gewählten Stufen und Kreisen, höchste Stufe zuerst.
 
-    Konten ohne Stufe nur bei öffentlichen Seiten. Liefert Liste von (user, stufenname).
+    Konten ohne Stufe nur bei öffentlichen Seiten. Immer nur Personen, die die Seite
+    sehen dürfen (Stufe und Kreis der Seite). Liefert Liste von (user, stufenname).
     """
     erlaubt = set(stufen_fuer(seite).values_list("pk", flat=True))
     stufen = [s for s in stufen if s.pk in erlaubt]
+    kreise = list(kreise)
     User = get_user_model()
-    bedingung = Q(groups__stufe__in=stufen)
+    bedingung = Q(groups__stufe__in=stufen) | Q(kreise__in=kreise)
     if ohne_stufe and not seite.stufe_id:
         bedingung |= ~Q(pk__in=User.objects.filter(groups__stufe__isnull=False).values("pk"))
-    qs = (User.objects.filter(is_active=True).filter(bedingung).distinct()
+    qs = (User.objects.filter(is_active=True).filter(bedingung)
+          .filter(pk__in=rechte.leser(seite).values("pk")).distinct()
           .select_related("profil")
           .annotate(rang=Max("groups__stufe__rang", filter=Q(groups__stufe__in=stufen))))
     if ausser is not None:
         qs = qs.exclude(pk=ausser.pk)
     namen = {s.rang: s.name for s in stufen}
+    kreisname = {}
+    if kreise:
+        for k in kreise:
+            for uid in k.personen.values_list("pk", flat=True):
+                kreisname.setdefault(uid, f"Kreis {k.name}")
     liste = sorted(qs, key=lambda u: (-(u.rang or 0), u.last_name.lower(), u.first_name.lower(),
                                       u.username.lower()))
-    return [(u, namen.get(u.rang, "ohne Stufe")) for u in liste]
+    return [(u, namen.get(u.rang) or kreisname.get(u.pk, "ohne Stufe")) for u in liste]
 
 
 def anzeigename(user):
@@ -71,16 +79,19 @@ def anzeigename(user):
 
 
 @transaction.atomic
-def versand_anlegen(seite, absender, *, modus, ankuendigung, mit_anhaengen, stufen, ohne_stufe):
+def versand_anlegen(seite, absender, *, modus, ankuendigung, mit_anhaengen, stufen, ohne_stufe,
+                    kreise=()):
     v = Versand.objects.create(
         seite=seite, titel=seite.titel, absender=absender, modus=modus,
         ankuendigung=ankuendigung.strip(), mit_anhaengen=mit_anhaengen,
         ohne_stufe=ohne_stufe and not seite.stufe_id,
     )
     v.stufen.set(stufen)
+    v.kreise.set(kreise)
     eintraege = [Empfang(versand=v, user=absender, name=anzeigename(absender),
                          adresse=zustelladresse(absender), stufe="Probe", reihenfolge=0)]
-    for i, (u, stufe) in enumerate(empfaenger(seite, stufen, v.ohne_stufe, ausser=absender), 1):
+    for i, (u, stufe) in enumerate(empfaenger(seite, stufen, v.ohne_stufe, ausser=absender,
+                                              kreise=kreise), 1):
         adresse = zustelladresse(u)
         eintraege.append(Empfang(
             versand=v, user=u, name=anzeigename(u), adresse=adresse or "", stufe=stufe,
@@ -108,9 +119,12 @@ def html_zu_text(html):
     return re.sub(r"\n{3,}", "\n\n", t).strip()
 
 
-def _anhaenge(versand, seite):
-    """(anzuhängen, nur_als_link) – Bilder gehen nie als Anhang mit."""
-    dateien = seite.dateien() if seite else []
+def _anhaenge(versand, seite, user=None):
+    """(anzuhängen, nur_als_link) – Bilder gehen nie als Anhang mit.
+
+    Nur Anhänge, die die empfangende Person sehen darf (Kreis des Anhangs)."""
+    dateien = ([a for a in seite.anhaenge.all() if not a.ist_bild and rechte.im_kreis(user, a.kreis_id)]
+               if seite else [])
     if not versand.mit_anhaengen or not dateien:
         return [], dateien
     try:
@@ -126,7 +140,7 @@ def baue_mail(versand, empfang):
     seite = versand.seite
     web = Webseite.aktuell()
     basis = settings.FV_BASIS_URL
-    anhaengen, als_link = _anhaenge(versand, seite)
+    anhaengen, als_link = _anhaenge(versand, seite, empfang.user)
     ctx = {
         "versand": versand, "seite": seite, "web": web, "basis": basis,
         "link": basis + seite.get_absolute_url(),
@@ -227,22 +241,30 @@ class VersandForm(forms.Form):
     stufen = forms.ModelMultipleChoiceField(label="An", queryset=Stufe.objects.none(),
                                             widget=forms.CheckboxSelectMultiple, required=False)
     ohne_stufe = forms.BooleanField(label="Konten ohne Stufe", required=False)
+    kreise = forms.ModelMultipleChoiceField(
+        label="An Kreise", queryset=Kreis.objects.all(), widget=forms.CheckboxSelectMultiple,
+        required=False, help_text="Zusätzlich oder statt Stufen. Es erhalten nur Personen die "
+                                  "E-Mail, die die Seite sehen dürfen.")
 
     def __init__(self, seite, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.seite = seite
         qs = stufen_fuer(seite)
         self.fields["stufen"].queryset = qs
-        self.fields["stufen"].initial = list(qs)
+        self.fields["stufen"].initial = [] if seite.kreis_id else list(qs)
+        if seite.kreis_id:
+            self.fields["kreise"].initial = [seite.kreis_id]
+        if not Kreis.objects.exists():
+            del self.fields["kreise"]
         if seite.stufe_id:
             del self.fields["ohne_stufe"]
-        if not seite.dateien():
+        if not [a for a in seite.anhaenge.all() if not a.ist_bild]:
             del self.fields["mit_anhaengen"]
 
     def clean(self):
         daten = super().clean()
-        if not daten.get("stufen") and not daten.get("ohne_stufe"):
-            raise forms.ValidationError("Bitte mindestens eine Stufe auswählen.")
+        if not daten.get("stufen") and not daten.get("ohne_stufe") and not daten.get("kreise"):
+            raise forms.ValidationError("Bitte mindestens eine Stufe oder einen Kreis auswählen.")
         return daten
 
 
@@ -255,10 +277,11 @@ def neu(request, pk):
         d = form.cleaned_data
         v = versand_anlegen(seite, request.user, modus=d["modus"], ankuendigung=d["ankuendigung"],
                             mit_anhaengen=d.get("mit_anhaengen", False), stufen=list(d["stufen"]),
-                            ohne_stufe=d.get("ohne_stufe", False))
+                            ohne_stufe=d.get("ohne_stufe", False), kreise=list(d.get("kreise") or []))
         messages.success(request, "Der Versand ist gestartet. Zuerst erhalten Sie selbst die E-Mail.")
         return redirect(v)
-    vorschau = empfaenger(seite, list(stufen_fuer(seite)), not seite.stufe_id, ausser=request.user)
+    vorschau = empfaenger(seite, list(stufen_fuer(seite)), not seite.stufe_id, ausser=request.user,
+                          kreise=list(Kreis.objects.all()))
     return render(request, "newsletter/neu.html", {
         "seite": seite, "form": form,
         "anzahl": len(vorschau),

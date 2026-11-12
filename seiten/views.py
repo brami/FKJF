@@ -19,28 +19,29 @@ def _verweigert(request):
 
 @require_GET
 def startseite(request):
-    seiten = rechte.sichtbare_seiten(request.user).prefetch_related("anhaenge")
+    seiten = rechte.sichtbare_seiten(request.user).select_related("kreis").prefetch_related("anhaenge")
     return render(request, "seiten/startseite.html", {
-        "seiten": seiten,
+        "seiten": rechte.anhaenge_zuordnen(request.user, list(seiten)),
         "darf_bearbeiten": rechte.darf_bearbeiten(request.user),
     })
 
 
 @require_GET
 def seite(request, pk):
-    s = get_object_or_404(Seite, pk=pk)
+    s = get_object_or_404(Seite.objects.select_related("kreis").prefetch_related("anhaenge__kreis"), pk=pk)
     if not rechte.darf_lesen(request.user, s):
         return _verweigert(request)
+    rechte.anhaenge_zuordnen(request.user, [s])
     return render(request, "seiten/seite.html", {
         "seite": s,
-        "anhaenge": s.anhaenge.all(),
+        "anhaenge": s.sichtbare_anhaenge(),
         "darf_bearbeiten": rechte.darf_bearbeiten(request.user),
     })
 
 
 def _ausliefern(request, pk, feld):
     a = get_object_or_404(Anhang.objects.select_related("seite"), pk=pk)
-    if not rechte.darf_lesen(request.user, a.seite):
+    if not rechte.darf_anhang(request.user, a):
         return _verweigert(request)
     datei = getattr(a, feld)
     if not datei:

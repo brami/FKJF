@@ -8,7 +8,7 @@ from .stufen import OEFFENTLICH
 class SeiteForm(forms.ModelForm):
     class Meta:
         model = Seite
-        fields = ["titel", "datum", "stufe", "inhalt"]
+        fields = ["titel", "datum", "stufe", "kreis", "inhalt"]
         widgets = {
             "datum": forms.DateInput(attrs={"type": "date"}, format="%Y-%m-%d"),
             "inhalt": forms.Textarea(attrs={"rows": 20, "data-editor": "tinymce"}),
@@ -22,6 +22,7 @@ class SeiteForm(forms.ModelForm):
         feld.empty_label = f"{OEFFENTLICH} (ohne Anmeldung)"
         if not self.instance.pk and not self.is_bound and not self.initial.get("stufe"):
             self.initial["stufe"] = Stufe.voreinstellung()
+        self.fields["kreis"].empty_label = "– kein Kreis –"
 
 
 class MehrereDateienWidget(forms.ClearableFileInput):
@@ -71,12 +72,17 @@ class NeueAnhaengeForm(forms.Form):
 class AnhangForm(forms.ModelForm):
     class Meta:
         model = Anhang
-        fields = ["bezeichnung", "titelbild"]
-        labels = {"bezeichnung": "Bezeichnung / Bildunterschrift"}
+        fields = ["bezeichnung", "titelbild", "kreis"]
+        labels = {"bezeichnung": "Bezeichnung / Bildunterschrift", "kreis": "Nur für Kreis"}
 
     def clean_titelbild(self):
         # Nur Bilder können Titelbild sein
         return self.cleaned_data.get("titelbild") and self.instance.ist_bild
+
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields["kreis"].empty_label = "alle, die die Seite sehen"
 
 
 class BaseAnhangFormSet(BaseInlineFormSet):

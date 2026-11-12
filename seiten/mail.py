@@ -238,7 +238,8 @@ def signale_verbinden():
 # ------------------------------------------------ Was gilt für wen
 
 def _mitglieder_q(v: Verteiler):
-    return Q(pk__in=v.personen.values("pk")) | Q(groups__stufe__in=v.stufen.all())
+    return (Q(pk__in=v.personen.values("pk")) | Q(groups__stufe__in=v.stufen.all())
+            | Q(kreise__in=v.kreise.all()))
 
 
 def verteiler_personen(v: Verteiler):
@@ -258,7 +259,8 @@ def verteiler_empfaenger(v: Verteiler) -> list[str]:
 def verteiler_von(user):
     """Aktive Verteiler, denen die Person angehört (persönlich oder über die Stufe)."""
     return (Verteiler.objects.filter(aktiv=True)
-            .filter(Q(personen=user) | Q(stufen__gruppe__user=user)).distinct().order_by("adresse"))
+            .filter(Q(personen=user) | Q(stufen__gruppe__user=user) | Q(kreise__personen=user))
+            .distinct().order_by("adresse"))
 
 
 def erlaubte_absender(user) -> list[str]:
@@ -694,7 +696,7 @@ def adressliste():
 def _teile():
     adressen = adressliste()
     verteiler = [(v, verteiler_personen(v), v.weitere(), verteiler_empfaenger(v))
-                 for v in Verteiler.objects.prefetch_related("stufen")]
+                 for v in Verteiler.objects.prefetch_related("stufen", "kreise")]
     User = get_user_model()
     postfaecher = (User.objects.filter(profil__vereins_email__isnull=False)
                    .select_related("profil", "belegung").order_by("profil__vereins_email"))

@@ -12,13 +12,14 @@ from django.contrib.auth import get_user_model
 from django.contrib.auth.admin import UserAdmin
 from django.contrib.auth.models import Group
 from django.core.exceptions import PermissionDenied
-from django.utils.html import format_html
+from django.utils.html import format_html, format_html_join
+from django.utils.safestring import mark_safe
 from simple_history.admin import SimpleHistoryAdmin
 
 from . import rechte
 from .konto import mails_werden_verschickt, sende_einladung
 from . import mail
-from .models import AdressSperre, Alias, Anhang, Profil, Seite, Stufe, Verteiler, Webseite
+from .models import AdressSperre, Alias, Anhang, Kreis, Profil, Seite, Stufe, Verteiler, Webseite
 
 User = get_user_model()
 
@@ -48,14 +49,14 @@ class NurVorstand:
 class AnhangInline(NurVorstand, admin.TabularInline):
     model = Anhang
     extra = 1
-    fields = ("datei", "bezeichnung", "titelbild", "dateiname")
+    fields = ("datei", "bezeichnung", "titelbild", "kreis", "dateiname")
     readonly_fields = ("dateiname",)
 
 
 @admin.register(Seite)
 class SeiteAdmin(NurVorstand, SimpleHistoryAdmin):
-    list_display = ("titel", "datum", "stufe", "geaendert")
-    list_filter = ("stufe",)
+    list_display = ("titel", "datum", "stufe", "kreis", "geaendert")
+    list_filter = ("stufe", "kreis")
     search_fields = ("titel", "inhalt")
     date_hierarchy = "datum"
     inlines = [AnhangInline]
@@ -366,9 +367,9 @@ class WebseiteAdmin(admin.ModelAdmin):
 class VerteilerForm(forms.ModelForm):
     class Meta:
         model = Verteiler
-        fields = ["adresse", "beschreibung", "stufen", "personen", "weitere_adressen", "offen", "aktiv",
-                  "archiv", "archiv_tage"]
-        widgets = {"stufen": forms.CheckboxSelectMultiple,
+        fields = ["adresse", "beschreibung", "stufen", "kreise", "personen", "weitere_adressen", "offen",
+                  "aktiv", "archiv", "archiv_tage"]
+        widgets = {"stufen": forms.CheckboxSelectMultiple, "kreise": forms.CheckboxSelectMultiple,
                    "weitere_adressen": forms.Textarea(attrs={"rows": 3})}
 
     def __init__(self, *args, **kwargs):
@@ -426,3 +427,43 @@ class AdressSperreAdmin(NurVorstand, admin.ModelAdmin):
 
     def has_add_permission(self, request, *args):
         return False
+
+
+# ---------------------------------------------------------------- Kreise
+
+@admin.register(Kreis)
+class KreisAdmin(NurVorstand, SimpleHistoryAdmin):
+    """Personenlisten wie „Ausflug 2027“: beschränken Seiten und Anhänge zusätzlich zur Stufe."""
+
+    list_display = ("name", "beschreibung", "anzahl", "verwendet")
+    search_fields = ("name", "beschreibung")
+    filter_horizontal = ("personen",)
+    fields = ("name", "beschreibung", "personen", "verwendung")
+    readonly_fields = ("verwendung",)
+
+    def formfield_for_manytomany(self, db_field, request, **kwargs):
+        if db_field.name == "personen":
+            kwargs["queryset"] = User.objects.filter(is_active=True).order_by(
+                "last_name", "first_name", "username")
+        return super().formfield_for_manytomany(db_field, request, **kwargs)
+
+    @admin.display(description="Personen")
+    def anzahl(self, obj):
+        return obj.personen.count()
+
+    @admin.display(description="Verwendet bei")
+    def verwendet(self, obj):
+        return (f"{obj.seiten.count()} Seiten, {obj.anhaenge.count()} Anhänge, "
+                f"{obj.verteiler.count()} Verteiler")
+
+    @admin.display(description="Verwendet bei")
+    def verwendung(self, obj):
+        if not obj.pk:
+            return "–"
+        teile = [format_html('<a href="{}">{}</a>', s.get_absolute_url(), s.titel) for s in obj.seiten.all()]
+        teile += [format_html('<a href="{}">{}</a> (Anhang „{}“)', a.seite.get_absolute_url(), a.seite.titel, a)
+                  for a in obj.anhaenge.select_related("seite")]
+        teile += [format_html("Verteiler {}", v.adresse) for v in obj.verteiler.all()]
+        if not teile:
+            return "noch nirgends"
+        return format_html_join(mark_safe("<br>"), "{}", ((t,) for t in teile))

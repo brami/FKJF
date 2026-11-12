@@ -111,3 +111,14 @@ img.mini { width: 3rem; height: 2.25rem; object-fit: cover; vertical-align: midd
 .formular input[type=checkbox], .formular input[type=radio] { width: auto; }
 .formular ul { list-style: none; padding-left: 0; margin: .2rem 0; }
 .formular ul label { font-weight: normal; }
+
+/* Mail: Belegung als Balken */
+progress.balken { width: 8rem; height: .7rem; vertical-align: middle; margin-right: .4rem;
+  appearance: none; border: 0; border-radius: .35rem; background: var(--linie); overflow: hidden; }
+progress.balken::-webkit-progress-bar { background: var(--linie); }
+progress.balken::-webkit-progress-value { background: var(--grau); }
+progress.balken::-moz-progress-bar { background: var(--grau); }
+progress.balken.voll::-webkit-progress-value { background: #c0392b; }
+progress.balken.voll::-moz-progress-bar { background: #c0392b; }
+tr.warnung td { background: #fdf0ee; }
+input[type=search] { padding: .3rem; font: inherit; width: 18rem; max-width: 100%; }

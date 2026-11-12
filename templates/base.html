@@ -18,7 +18,7 @@
       <nav class="konto" aria-label="Benutzerkonto">
         {% if user.is_authenticated %}
           <a href="{% url 'konto' %}">{{ user.get_full_name|default:user.username }}</a>
-          {% if fv_darf_bearbeiten %}<a href="{% url 'newsletter_uebersicht' %}">Newsletter</a> <a href="{% url 'admin:index' %}">Verwaltung</a>{% endif %}
+          {% if fv_darf_bearbeiten %}<a href="{% url 'newsletter_uebersicht' %}">Newsletter</a> <a href="{% url 'mail_uebersicht' %}">Mail</a> <a href="{% url 'admin:index' %}">Verwaltung</a>{% endif %}
           <form method="post" action="{% url 'account_logout' %}">{% csrf_token %}
             <button type="submit" class="link">Abmelden</button>
           </form>

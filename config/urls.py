@@ -6,7 +6,7 @@ from django.shortcuts import redirect
 from django.urls import include, path, reverse
 from django.views.generic import RedirectView
 
-from seiten import newsletter, bearbeiten, konto, rechte, views
+from seiten import mail, newsletter, bearbeiten, konto, rechte, views
 
 # Die Verwaltung liegt nicht unter /admin/, um automatisierte Angriffe zu erschweren.
 ADMIN_PFAD = os.environ.get("FV_ADMIN_PFAD", "verwaltung/")
@@ -48,6 +48,9 @@ urlpatterns = [
     path("newsletter/<int:pk>/abbrechen/", newsletter.abbrechen_view, name="newsletter_abbrechen"),
     path("newsletter/<int:pk>/fortsetzen/", newsletter.fortsetzen, name="newsletter_fortsetzen"),
     path("konto/", konto.konto, name="konto"),
+    path("konto/mail/abwesenheit/", mail.abwesenheit, name="mail_abwesenheit"),
+    path("konto/mail/postfach.mobileconfig", mail.einrichtungsprofil, name="mail_einrichtungsprofil"),
+    path("mail/", mail.uebersicht, name="mail_uebersicht"),
     # E-Mail-Adressen pflegt der Vorstand; Registrierung gibt es nicht
     path("konto/email/", RedirectView.as_view(pattern_name="konto")),
     path("konto/", include("allauth.urls")),

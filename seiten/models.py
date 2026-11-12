@@ -133,6 +133,12 @@ class Webseite(models.Model):
                   "Adresse, z. B. die des Vorstands.",
     )
 
+    nutzungsordnung = models.ForeignKey(
+        "Seite", verbose_name="Nutzungsordnung der Postfächer", null=True, blank=True,
+        on_delete=models.SET_NULL, related_name="+",
+        help_text="Seite mit der Nutzungsordnung; wird im Bereich „Mail“ des Kontos verlinkt.",
+    )
+
     class Meta:
         verbose_name = "Einstellungen der Webseite"
         verbose_name_plural = "Einstellungen der Webseite"
@@ -318,6 +324,12 @@ class Profil(models.Model):
         help_text="„Passwort vergessen“ und Einladungen gehen immer an die externe Adresse.",
     )
 
+    # Postfach auf dem Mailserver (Verzeichnis nach der Nummer des Kontos, nicht nach der
+    # Adresse). Bleibt bestehen, bis es nach der Löschfrist entfernt wurde.
+    hat_postfach = models.BooleanField(default=False, editable=False)
+    postfach_gesperrt_seit = models.DateTimeField(null=True, blank=True, editable=False)
+    vorwarnung_am = models.DateTimeField(null=True, blank=True, editable=False)
+
     class Meta:
         verbose_name = "Profil"
         verbose_name_plural = "Profile"
@@ -329,6 +341,8 @@ class Profil(models.Model):
         self.vereins_email = (self.vereins_email or "").strip().lower() or None
         if not self.vereins_email:
             self.zustellung = self.Zustellung.EXTERN
+        else:
+            self.hat_postfach = True
         super().save(*args, **kwargs)
 
 
@@ -432,3 +446,139 @@ class Empfang(models.Model):
 
     def __str__(self):
         return f"{self.name} <{self.adresse}>"
+
+
+# ---------------------------------------------------------------- Mail
+
+class Verteiler(models.Model):
+    """Funktionsadresse (z. B. vorstand@): verteilt an Personen, kein eigenes Postfach."""
+
+    adresse = models.EmailField(unique=True)
+    beschreibung = models.CharField(max_length=200, blank=True)
+    stufen = models.ManyToManyField(
+        Stufe, blank=True, related_name="verteiler", verbose_name="Empfänger: Stufen",
+        help_text="Alle aktiven Personen dieser Stufen (genau dieser, nicht der höheren).",
+    )
+    personen = models.ManyToManyField(
+        settings.AUTH_USER_MODEL, blank=True, related_name="verteiler",
+        verbose_name="Empfänger: Personen",
+    )
+    weitere_adressen = models.TextField(
+        "Weitere Empfänger", blank=True,
+        help_text="Zusätzliche Adressen ohne Konto, eine je Zeile – z. B. die Betreuung des "
+                  "Servers für postmaster@ und abuse@.",
+    )
+    offen = models.BooleanField(
+        "Alle dürfen schreiben", default=True,
+        help_text="Aus: Nur angemeldete Vereinspostfächer dürfen an diesen Verteiler senden.",
+    )
+    aktiv = models.BooleanField(default=True)
+
+    class Meta:
+        verbose_name = "Verteiler"
+        verbose_name_plural = "Verteiler"
+        ordering = ["adresse"]
+
+    def __str__(self):
+        return self.adresse
+
+    def save(self, *args, **kwargs):
+        self.adresse = self.adresse.strip().lower()
+        super().save(*args, **kwargs)
+
+    def weitere(self):
+        return [a.strip().lower() for a in self.weitere_adressen.split() if a.strip()]
+
+
+class Alias(models.Model):
+    """Zusätzliche Adresse, die im Postfach einer Person ankommt."""
+
+    class Art(models.TextChoices):
+        HAND = "hand", "von Hand"
+        AUTOMATISCH = "auto", "frühere Vereinsadresse"
+
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE,
+                             related_name="aliase", verbose_name="Person")
+    adresse = models.EmailField(unique=True)
+    art = models.CharField(max_length=4, choices=Art.choices, default=Art.HAND, editable=False)
+    angelegt = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = "Alias-Adresse"
+        verbose_name_plural = "Alias-Adressen"
+        ordering = ["adresse"]
+
+    def __str__(self):
+        return self.adresse
+
+    def save(self, *args, **kwargs):
+        self.adresse = self.adresse.strip().lower()
+        super().save(*args, **kwargs)
+
+
+class AdressSperre(models.Model):
+    """Frei gewordene Adresse: erst nach der Sperrfrist neu vergeben.
+
+    Mails an sie werden bis dahin mit Hinweis abgelehnt. Dieselbe Person darf ihre
+    frühere Adresse wieder erhalten.
+    """
+
+    adresse = models.EmailField(unique=True)
+    frei_ab = models.DateField("Frei ab")
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True,
+                             blank=True, related_name="+", verbose_name="Zuletzt bei")
+    grund = models.CharField(max_length=200, blank=True)
+    angelegt = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = "Gesperrte Adresse"
+        verbose_name_plural = "Gesperrte Adressen"
+        ordering = ["adresse"]
+
+    def __str__(self):
+        return self.adresse
+
+
+class Abwesenheit(models.Model):
+    """Abwesenheitsnotiz einer Person (wird als Sieve-Regel an den Mailserver gegeben)."""
+
+    user = models.OneToOneField(settings.AUTH_USER_MODEL, on_delete=models.CASCADE,
+                                related_name="abwesenheit")
+    aktiv = models.BooleanField("Abwesenheitsnotiz einschalten", default=False)
+    von = models.DateField("Von", null=True, blank=True)
+    bis = models.DateField("Bis", null=True, blank=True)
+    betreff = models.CharField(max_length=150, default="Abwesend")
+    text = models.TextField(blank=True)
+    geaendert = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = "Abwesenheitsnotiz"
+        verbose_name_plural = "Abwesenheitsnotizen"
+
+    def __str__(self):
+        return f"Abwesenheit von {self.user}"
+
+    def gilt_am(self, tag) -> bool:
+        return (self.aktiv and (self.von is None or self.von <= tag)
+                and (self.bis is None or tag <= self.bis))
+
+
+class Belegung(models.Model):
+    """Belegter Speicher eines Postfachs (vom Server regelmäßig eingelesen)."""
+
+    user = models.OneToOneField(settings.AUTH_USER_MODEL, on_delete=models.CASCADE,
+                                related_name="belegung")
+    bytes = models.BigIntegerField(default=0)
+    grenze_bytes = models.BigIntegerField(null=True, blank=True)
+    nachrichten = models.IntegerField(default=0)
+    stand = models.DateTimeField()
+
+    class Meta:
+        verbose_name = "Belegung"
+        verbose_name_plural = "Belegungen"
+
+    @property
+    def prozent(self):
+        if not self.grenze_bytes:
+            return None
+        return min(100, round(100 * self.bytes / self.grenze_bytes))

@@ -1,0 +1,13 @@
+Guten Tag,
+
+folgende gesperrte Postfächer werden demnächst automatisch gelöscht:
+{% for p, datum in postfaecher %}
+- {{ p.user.get_full_name|default:p.user.username }} (gesperrt seit {{ p.postfach_gesperrt_seit|date:"j.n.Y" }}) – Löschung am {{ datum|date:"j.n.Y" }}{% endfor %}
+
+Soll ein Postfach erhalten bleiben (z. B. bei Wiederwahl), aktivieren Sie das Konto
+vor diesem Datum wieder und tragen gegebenenfalls die Vereinsadresse erneut ein:
+{{ basis }}/
+
+Übersicht: {{ basis }}/mail/
+
+{{ webseite.name }}

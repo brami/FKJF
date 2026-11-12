@@ -1,0 +1,10 @@
+{% extends "base.html" %}
+
+{% block titel %}Kein Zugriff – {{ fv_webseite.name }}{% endblock %}
+{% block robots %}<meta name="robots" content="noindex">{% endblock %}
+
+{% block inhalt %}
+  <h1>Kein Zugriff</h1>
+  <p>Für diesen Bereich fehlen Ihnen die Rechte.</p>
+  <p><a href="{% url 'startseite' %}">Zur Startseite</a></p>
+{% endblock %}

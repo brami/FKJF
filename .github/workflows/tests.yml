@@ -79,3 +79,9 @@ jobs:
         run: |
           bash -n deploy/setup-server-fv-web.sh
           shellcheck -S warning deploy/setup-server-fv-web.sh
+      - name: Caddy-Konfiguration mit echtem caddy prüfen
+        run: |
+          sudo apt-get install -y -qq caddy >/dev/null
+          caddy version
+          python3 -m pip install -q pytest
+          python3 -m pytest -p no:django --noconftest -q tests/test_installationsskript.py

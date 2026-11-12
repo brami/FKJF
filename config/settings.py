@@ -159,6 +159,7 @@ USE_I18N = True
 USE_TZ = True
 
 STATIC_URL = "static/"
+CSRF_FAILURE_VIEW = "seiten.views.csrf_fehler"
 STATIC_ROOT = Path(env("FV_STATIC_ROOT", BASE_DIR / "staticfiles"))
 STATICFILES_DIRS = [BASE_DIR / "static"]
 

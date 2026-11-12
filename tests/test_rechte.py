@@ -87,12 +87,8 @@ def test_seite_und_anhang(client, seiten, art, max_stufe, stufe):
         assert r_anhang.status_code == 200
         assert b"".join(r_anhang.streaming_content) == b"%PDF-1.4 test"
         assert 'filename="einladung.pdf"' in r_anhang["Content-Disposition"]
-    elif u is None or not u.is_active:
-        # Nicht angemeldet (deaktivierte Konten können sich nicht anmelden)
-        assert r_seite.status_code == 302 and "/konto/login/" in r_seite["Location"]
-        assert r_anhang.status_code == 302 and "/konto/login/" in r_anhang["Location"]
     else:
-        # Angemeldet ohne Recht: 404, verrät nicht, dass es die Seite gibt
+        # Ohne Recht – angemeldet oder nicht: 404, verrät nicht, dass es die Seite gibt
         assert r_seite.status_code == 404
         assert r_anhang.status_code == 404
 

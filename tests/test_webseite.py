@@ -97,3 +97,41 @@ def test_fusszeile_verlinkt_quellcode(client, settings):
     settings.FV_QUELLCODE_URL = "https://example.org/quellcode"
     html = client.get("/").content.decode()
     assert '<a href="https://example.org/quellcode" rel="license">Quellcode (AGPL)</a>' in html
+
+
+def test_fusszeile_verlinkt_impressum_datenschutz_und_ueber(client):
+    from seiten.models import Seite
+    web = Webseite.aktuell()
+    assert "Impressum" not in client.get("/").content.decode()
+    web.impressum = Seite.objects.create(titel="Impressum", inhalt="<p>Verein</p>")
+    web.datenschutz = Seite.objects.create(titel="Datenschutzerklärung", inhalt="<p>DSGVO</p>")
+    web.save()
+    html = client.get("/").content.decode()
+    assert f'href="{web.impressum.get_absolute_url()}">Impressum</a>' in html
+    assert f'href="{web.datenschutz.get_absolute_url()}">Datenschutz</a>' in html
+    assert f'href="{reverse("ueber")}">Über diese Webseite</a>' in html
+
+
+def test_impressum_nur_oeffentliche_seiten():
+    from seiten.models import Seite, Stufe
+    from django.forms import modelform_factory
+    oeffentlich = Seite.objects.create(titel="Impressum")
+    intern = Seite.objects.create(titel="Intern", stufe=Stufe.objects.get(name="Mitglieder"))
+    auswahl = set(modelform_factory(Webseite, fields=["impressum"])().fields["impressum"].queryset)
+    assert oeffentlich in auswahl and intern not in auswahl
+
+
+def test_ueber_diese_webseite_mit_lizenzhinweisen(client, settings):
+    settings.FV_QUELLCODE_URL = "https://example.org/quellcode"
+    html = client.get(reverse("ueber")).content.decode()
+    for text in ("Copyright © 2026 Michael Bramer", "GNU Affero General Public License",
+                 "ohne jede Gewährleistung", "https://example.org/quellcode", "TinyMCE",
+                 "Creative Commons"):
+        assert text in html
+
+
+def test_lizenztexte_werden_ausgeliefert(client):
+    r = client.get(reverse("lizenz_programm"))
+    assert r.status_code == 200 and "GNU AFFERO GENERAL PUBLIC LICENSE" in r.content.decode()
+    r = client.get(reverse("lizenz_doku"))
+    assert r.status_code == 200 and "Attribution-ShareAlike 4.0" in r.content.decode()

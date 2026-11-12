@@ -36,8 +36,11 @@
 
   <footer class="fuss">
     <div class="rahmen">
-      {# Links auf Impressum/Datenschutz folgen, sobald die Seiten angelegt sind #}
-      &copy; {{ fv_webseite.fuss }}{% if fv_quellcode %} · <a href="{{ fv_quellcode }}" rel="license">Quellcode (AGPL)</a>{% endif %}
+      &copy; {{ fv_webseite.fuss }}
+      {% if fv_webseite.impressum %} · <a href="{{ fv_webseite.impressum.get_absolute_url }}">Impressum</a>{% endif %}
+      {% if fv_webseite.datenschutz %} · <a href="{{ fv_webseite.datenschutz.get_absolute_url }}">Datenschutz</a>{% endif %}
+      · <a href="{% url 'ueber' %}">Über diese Webseite</a>
+      {% if fv_quellcode %} · <a href="{{ fv_quellcode }}" rel="license">Quellcode (AGPL)</a>{% endif %}
     </div>
   </footer>
 </body>

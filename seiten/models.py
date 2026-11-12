@@ -133,6 +133,18 @@ class Webseite(models.Model):
                   "Adresse, z. B. die des Vorstands.",
     )
 
+    impressum = models.ForeignKey(
+        "Seite", verbose_name="Impressum", null=True, blank=True,
+        on_delete=models.SET_NULL, related_name="+",
+        limit_choices_to={"stufe__isnull": True},
+        help_text="Öffentliche Seite mit dem Impressum (§ 5 DDG); wird in der Fußzeile jeder Seite verlinkt.",
+    )
+    datenschutz = models.ForeignKey(
+        "Seite", verbose_name="Datenschutzerklärung", null=True, blank=True,
+        on_delete=models.SET_NULL, related_name="+",
+        limit_choices_to={"stufe__isnull": True},
+        help_text="Öffentliche Seite mit der Datenschutzerklärung; wird in der Fußzeile verlinkt.",
+    )
     nutzungsordnung = models.ForeignKey(
         "Seite", verbose_name="Nutzungsordnung der Postfächer", null=True, blank=True,
         on_delete=models.SET_NULL, related_name="+",

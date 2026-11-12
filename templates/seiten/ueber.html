@@ -1,0 +1,47 @@
+{% extends "base.html" %}
+
+{% block titel %}Über diese Webseite – {{ fv_webseite.name }}{% endblock %}
+
+{% block inhalt %}
+  <h1>Über diese Webseite</h1>
+  <p>Betreiber dieser Webseite: {{ fv_webseite.fuss }} – Angaben zum Anbieter stehen
+    {% if fv_webseite.impressum %}im <a href="{{ fv_webseite.impressum.get_absolute_url }}">Impressum</a>{% else %}im Impressum{% endif %},
+    zum Umgang mit Ihren Daten in der
+    {% if fv_webseite.datenschutz %}<a href="{{ fv_webseite.datenschutz.get_absolute_url }}">Datenschutzerklärung</a>{% else %}Datenschutzerklärung{% endif %}.</p>
+
+  <h2>Software</h2>
+  <p>Die Software der Webseite (fv-web) ist freie Software.<br>
+    Copyright © 2026 Michael Bramer</p>
+  <p>Sie dürfen sie unter den Bedingungen der
+    <a href="{% url 'lizenz_programm' %}" rel="license">GNU Affero General Public License</a>, wie von der Free Software
+    Foundation veröffentlicht, weitergeben und/oder verändern – entweder gemäß Version 3 der Lizenz oder (nach Ihrer Wahl)
+    jeder späteren Version.</p>
+  <p>Die Software wird in der Hoffnung bereitgestellt, dass sie nützlich ist, aber <strong>ohne jede Gewährleistung</strong> –
+    sogar ohne die implizite Gewährleistung der Marktreife oder der Eignung für einen bestimmten Zweck. Einzelheiten
+    stehen in der Lizenz. Für die Inhalte der Webseite ist allein der Anbieter verantwortlich.</p>
+  {% if quellcode %}<p><strong>Quellcode:</strong> <a href="{{ quellcode }}">{{ quellcode }}</a></p>{% endif %}
+
+  <h2>Dokumentation</h2>
+  <p>Die Anleitungen und das Betriebshandbuch stehen unter
+    <a href="{% url 'lizenz_doku' %}" rel="license">Creative Commons Namensnennung – Weitergabe unter gleichen Bedingungen 4.0</a>
+    (Namensnennung: Michael Bramer).</p>
+
+  <h2>Verwendete Software</h2>
+  <table class="tabelle">
+    <thead><tr><th>Bestandteil</th><th>Lizenz</th></tr></thead>
+    <tbody>
+      <tr><td>Django</td><td>BSD-3-Clause</td></tr>
+      <tr><td>django-allauth</td><td>MIT</td></tr>
+      <tr><td>django-simple-history</td><td>BSD-3-Clause</td></tr>
+      <tr><td>TinyMCE (Editor)</td><td>GPL-2.0-or-later</td></tr>
+      <tr><td>DOMPurify (in TinyMCE)</td><td>Apache-2.0 oder MPL-2.0</td></tr>
+      <tr><td>nh3</td><td>MIT</td></tr>
+      <tr><td>Pillow</td><td>MIT-CMU</td></tr>
+      <tr><td>argon2-cffi</td><td>MIT</td></tr>
+      <tr><td>psycopg</td><td>LGPL-3.0</td></tr>
+      <tr><td>cryptography</td><td>Apache-2.0 oder BSD-3-Clause</td></tr>
+      <tr><td>gunicorn</td><td>MIT</td></tr>
+    </tbody>
+  </table>
+  <p class="hilfe">Vollständige Liste mit Versionen: requirements.txt im Quellcode.</p>
+{% endblock %}

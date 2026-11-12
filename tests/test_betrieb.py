@@ -68,3 +68,51 @@ def test_deploy_pruefung_ohne_fehler_im_dateimodus(settings):
     r = subprocess.run([sys.executable, "manage.py", "check", "--deploy", "--fail-level", "ERROR"],
                        env=env, capture_output=True, text=True)
     assert r.returncode == 0, r.stderr + r.stdout
+
+
+@pytest.mark.parametrize("wert, erwartet", [
+    (None, "[Webseite] "),
+    ("[foerderverein-kf-jf-kreuzau.de]", "[foerderverein-kf-jf-kreuzau.de] "),
+    ("[Webseite Förderverein]  ", "[Webseite Förderverein] "),
+])
+def test_betreff_der_fehlermails_aus_env(wert, erwartet):
+    import os
+    import subprocess
+    import sys
+    umgebung = {k: v for k, v in os.environ.items() if k != "FV_ADMINS_BETREFF"}
+    umgebung.update(DJANGO_SETTINGS_MODULE="config.settings", FV_DEBUG="1", FV_SECRET_KEY="x",
+                    FV_ADMINS=" betreuung@example.org , zweite@example.org")
+    if wert is not None:
+        umgebung["FV_ADMINS_BETREFF"] = wert
+    r = subprocess.run([sys.executable, "-c",
+                        "import django; django.setup(); from django.conf import settings as s; "
+                        "print(repr(s.EMAIL_SUBJECT_PREFIX)); print(s.ADMINS)"],
+                       env=umgebung, capture_output=True, text=True, check=True)
+    praefix, admins = r.stdout.strip().splitlines()
+    assert praefix == repr(erwartet)
+    assert admins == "['betreuung@example.org', 'zweite@example.org']"
+
+
+@pytest.mark.django_db
+def test_fehlermail_mit_betreff(settings, client):
+    """Ein Programmfehler erzeugt eine Mail an FV_ADMINS mit dem eingestellten Betreff."""
+    from django.core import mail
+    from django.test import Client
+    from django.urls import path
+
+    def kaputt(request):
+        raise RuntimeError("Testfehler")
+
+    import types
+    urls = types.ModuleType("fehler_urls")
+    urls.urlpatterns = [path("kaputt/", kaputt)]
+    import sys
+    sys.modules["fehler_urls"] = urls
+    settings.ROOT_URLCONF = "fehler_urls"
+    settings.ADMINS = ["betreuung@example.org"]
+    settings.EMAIL_SUBJECT_PREFIX = "[foerderverein-kf-jf-kreuzau.de] "
+    assert Client(raise_request_exception=False).get("/kaputt/").status_code == 500
+    m = mail.outbox[-1]
+    assert m.to == ["betreuung@example.org"]
+    assert m.subject.startswith("[foerderverein-kf-jf-kreuzau.de] ERROR")
+    assert "Testfehler" in m.body

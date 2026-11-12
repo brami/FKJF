@@ -503,6 +503,8 @@ EOF
   ensure_kv "$ENVF" FV_MAIL "datei"
   ensure_kv "$ENVF" FV_MAIL_DATEIEN "$DATA/mails"
   ensure_kv "$ENVF" FV_MAIL_ABSENDER "webmaster@$DOMAIN"   # Absendername = Name der Webseite
+  ensure_kv "$ENVF" FV_ADMINS ""                         # Fehlermails an (Komma-getrennt)
+  ensure_kv "$ENVF" FV_ADMINS_BETREFF "[$DOMAIN]"        # Betreff-Anfang der Fehlermails
   ensure_kv "$ENVF" FV_SMTP_HOST ""
   ensure_kv "$ENVF" FV_SMTP_PORT "587"
   ensure_kv "$ENVF" FV_SMTP_USER ""

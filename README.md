@@ -49,6 +49,8 @@ Tests: `python -m pytest`
 | `FV_DB_NAME`, `FV_DB_USER`, … | PostgreSQL; ohne `FV_DB_NAME` wird SQLite verwendet |
 | `FV_PRIVATE_MEDIA_ROOT` | Ablage der Anhänge (außerhalb des Webverzeichnisses) |
 | `FV_ADMIN_PFAD` | Pfad der Verwaltung, Standard `verwaltung/` |
+| `FV_ADMINS` | Adressen (Komma-getrennt), die bei Programmfehlern eine Fehlermail erhalten (nur mit `FV_MAIL=smtp`) |
+| `FV_ADMINS_BETREFF` | Betreff-Anfang der Fehlermails, Standard `[Webseite]`; das Installationsskript setzt `[<domain>]` |
 | `FV_NEWSLETTER_PAUSE` | Sekunden zwischen Probe und Versand an alle, Standard 300 |
 | `FV_NEWSLETTER_ABSTAND` | Sekunden zwischen zwei E-Mails, Standard 3 |
 | `FV_NEWSLETTER_MAX_ANHANG_MB` | Anhänge bis zu dieser Gesamtgröße gehen mit, darüber nur Links; Standard 8 |

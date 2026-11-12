@@ -317,7 +317,11 @@ FV\_SMTP\_TLS              & \cmd{starttls} (Port 587), \cmd{ssl} (Port 465) ode
 FV\_MAIL\_ABSENDER         & Absenderadresse, z.\,B.\ \cmd{webmaster@foerderverein-kf-jf-kreuzau.de};
                              den Namen ergänzt die Webseite \\
 FV\_ADMINS                 & Adressen (durch Komma getrennt), die bei Programmfehlern eine
-                             Fehlermeldung per E-Mail erhalten (nur mit \cmd{smtp}) \\
+                             Fehlermail mit Details erhalten (nur mit \cmd{smtp}). Die Mails
+                             können personenbezogene Daten enthalten: nur die Betreuung eintragen. \\
+FV\_ADMINS\_BETREFF        & Betreff-Anfang dieser Fehlermails zum Filtern, z.\,B.\
+                             \cmd{"[foerderverein-kf-jf-kreuzau.de]"}. Mit Leerzeichen in
+                             Anführungszeichen setzen. \\
 FV\_ADMIN\_PFAD            & Pfad der Verwaltung, Standard \cmd{verwaltung/} \\
 FV\_NEWSLETTER\_PAUSE      & Sekunden zwischen Probe und Versand an alle (300) \\
 FV\_NEWSLETTER\_ABSTAND    & Sekunden zwischen zwei Newsletter-Mails (3) \\

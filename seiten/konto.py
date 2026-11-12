@@ -237,4 +237,5 @@ def kontext(request):
     return {
         "fv_darf_bearbeiten": rechte.darf_bearbeiten(getattr(request, "user", None)),
         "fv_webseite": webseite(),
+        "fv_quellcode": settings.FV_QUELLCODE_URL,
     }

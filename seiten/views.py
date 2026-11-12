@@ -85,3 +85,20 @@ def gesund(request):
 def csrf_fehler(request, reason=""):
     """Formular abgelaufen o. Ä. (CSRF) – verständlich statt Django-Technikseite."""
     return render(request, "403_csrf.html", status=403)
+
+
+@require_GET
+def ueber(request):
+    """Über diese Webseite: Software, Urheber, Lizenz, Quellcode (AGPL § 5 d, § 13)."""
+    from django.conf import settings
+    return render(request, "seiten/ueber.html", {"quellcode": settings.FV_QUELLCODE_URL})
+
+
+@require_GET
+def lizenztext(request, teil="programm"):
+    """Volltext der Lizenzen aus dem installierten Programm (LICENSE, docs/LICENSE)."""
+    from django.conf import settings
+    datei = settings.BASE_DIR / ("LICENSE" if teil == "programm" else "docs/LICENSE")
+    if not datei.exists():
+        raise Http404
+    return HttpResponse(datei.read_text(encoding="utf-8"), content_type="text/plain; charset=utf-8")

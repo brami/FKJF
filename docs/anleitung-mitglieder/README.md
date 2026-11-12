@@ -33,3 +33,8 @@ python docs/anleitung-mitglieder/werkzeuge/fotos.py <Einladungslink aus /tmp/mai
 
 Danach die Ränder neben dem Seiteninhalt abschneiden (Desktop-Fotos: x = 250 … 1950)
 und die Bilder nach `bilder/` kopieren.
+
+## Lizenz
+
+© 2026 Michael Bramer. Text, Bilder und Vorlage stehen unter
+[CC BY-SA 4.0](../LICENSE) (Namensnennung: „Michael Bramer“).

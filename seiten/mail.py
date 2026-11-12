@@ -7,6 +7,12 @@ Verteiler) und ``exim_absender`` (mit welchen Adressen eine Person senden darf).
 Die Funktionen ``exim_*`` hier liefern dasselbe in Python; die Tests stellen auf
 PostgreSQL sicher, dass beides übereinstimmt.
 
+Plus-Adressen (name+zusatz@…) kommen im Postfach von name@… an. Der Mailserver meldet
+sie (mail_plusadressen); die Person sieht sie im Konto und kann einzelne sperren
+(Sicht ``exim_plus_gesperrt``). Verteiler können ein Archiv haben (Sichten
+``mail_archive``, ``dovecot_archiv_leser``); lesen dürfen es die aktuellen
+Empfänger mit Postfach.
+
 Regeln (Konzept Mailserver, Abschnitte 3, 9 und 11):
 - Jede Adresse gibt es nur einmal: Vereinsadressen, Aliase, Verteiler, gesperrte
   Adressen und externe Adressen der Konten.
@@ -35,13 +41,15 @@ from django.core.validators import validate_email
 from django.db import transaction
 from django.db.models import Q
 from django.http import Http404, HttpResponse
-from django.shortcuts import redirect, render
+from django.shortcuts import get_object_or_404, redirect, render
 from django.template.loader import render_to_string
+from django.urls import reverse_lazy
 from django.utils import timezone
+from django.views.decorators.http import require_POST
 
 from . import konto as kontomodul
 from .bearbeiten import nur_vorstand
-from .models import (Abwesenheit, AdressSperre, Alias, Belegung, Profil, Verteiler,
+from .models import (Abwesenheit, AdressSperre, Alias, Belegung, PlusAdresse, Profil, Verteiler,
                      Webseite, zustelladresse)
 
 
@@ -284,6 +292,34 @@ def exim_verteiler() -> set:
     return {(v.adresse, e) for v in Verteiler.objects.filter(aktiv=True) for e in verteiler_empfaenger(v)}
 
 
+def exim_plus_gesperrt() -> set:
+    return {(a,) for a in PlusAdresse.objects.filter(gesperrt=True).values_list("adresse", flat=True)}
+
+
+def archiv_leser(v: Verteiler) -> list[str]:
+    """Vereinsadressen der aktuellen Empfänger mit Postfach (dürfen das Archiv lesen)."""
+    if not v.archiv:
+        return []
+    return sorted({u.profil.vereins_email for u in verteiler_personen(v)
+                   if getattr(u, "profil", None) and u.profil.vereins_email})
+
+
+def mail_archive() -> set:
+    return {(v.pk, v.adresse, v.archiv_tage, v.aktiv) for v in Verteiler.objects.filter(archiv=True)}
+
+
+def archiv_leser_alle() -> set:
+    return {(v.pk, v.adresse, b) for v in Verteiler.objects.filter(archiv=True) for b in archiv_leser(v)}
+
+
+def archive_von(user):
+    """Verteiler-Archive, die die Person lesen darf."""
+    p = getattr(user, "profil", None)
+    if not user.is_active or not p or not p.vereins_email:
+        return []
+    return [v for v in verteiler_von(user).filter(archiv=True)]
+
+
 def exim_absender() -> set:
     User = get_user_model()
     out = set()
@@ -323,6 +359,69 @@ def sieve_skript(user) -> str:
         return kopf + 'require ["vacation"];\n' + aktion
     return (kopf + 'require ["vacation", "date", "relational"];\n'
             f"if allof ({', '.join(bedingungen)}) {{\n    {aktion}}}\n")
+
+
+# ------------------------------------------------------ Plus-Adressen
+
+def plus_teile(adresse):
+    """„kai.maier+shop@d“ → („kai.maier@d“, „shop“); ohne Plus: (adresse, "")."""
+    a = normal(adresse)
+    if "@" not in a:
+        return a, ""
+    lokal, domain = a.rsplit("@", 1)
+    if "+" not in lokal:
+        return a, ""
+    basis, zusatz = lokal.split("+", 1)
+    return f"{basis}@{domain}", zusatz
+
+
+def plus_besitzer(adresse):
+    """Person, in deren Postfach die Plus-Adresse ankommt (Vereinsadresse oder Alias)."""
+    basis, zusatz = plus_teile(adresse)
+    if not zusatz:
+        return None
+    p = Profil.objects.select_related("user").filter(vereins_email__iexact=basis).first()
+    if p:
+        return p.user
+    a = Alias.objects.select_related("user").filter(adresse__iexact=basis).first()
+    return a.user if a else None
+
+
+def plusadressen_einlesen(text: str, jetzt=None) -> int:
+    """Vom Mailserver gemeldete Plus-Adressen übernehmen (eine Adresse je Zeile und Mail;
+    davor darf ein Zeitstempel stehen, er wird ignoriert)."""
+    jetzt = jetzt or timezone.now()
+    zaehler = {}
+    for zeile in text.splitlines():
+        teile = zeile.split()
+        if not teile:
+            continue
+        adresse = normal(teile[-1].strip("<>"))
+        if plus_teile(adresse)[1]:
+            zaehler[adresse] = zaehler.get(adresse, 0) + 1
+    n = 0
+    for adresse, anzahl in zaehler.items():
+        user = plus_besitzer(adresse)
+        if user is None:
+            continue
+        obj, neu = PlusAdresse.objects.get_or_create(
+            adresse=adresse, defaults={"user": user, "erste": jetzt, "letzte": jetzt, "anzahl": anzahl})
+        if not neu:
+            PlusAdresse.objects.filter(pk=obj.pk).update(user=user, letzte=jetzt,
+                                                         anzahl=obj.anzahl + anzahl)
+        n += 1
+    return n
+
+
+@login_required
+@require_POST
+def plus_sperren(request, pk):
+    pa = get_object_or_404(PlusAdresse, pk=pk, user=request.user)
+    sperren_ = request.POST.get("aktion") == "sperren"
+    PlusAdresse.objects.filter(pk=pa.pk).update(gesperrt=sperren_,
+                                                gesperrt_am=timezone.now() if sperren_ else None)
+    messages.success(request, f"{pa.adresse} ist {'gesperrt – Mails daran werden abgelehnt' if sperren_ else 'wieder freigegeben'}.")
+    return redirect(reverse_lazy("konto") + "#plus")
 
 
 # ------------------------------------------------------ Belegung
@@ -424,6 +523,7 @@ def postfach_geloescht(user):
                                           vorwarnung_am=None)
     Belegung.objects.filter(user=user).delete()
     Abwesenheit.objects.filter(user=user).delete()
+    PlusAdresse.objects.filter(user=user).delete()
     return adressen
 
 
@@ -499,6 +599,9 @@ def mail_kontext(user) -> dict:
             "prozent": min(prozent, 100) if prozent is not None else None,
             "voll": prozent is not None and prozent >= 90,
             "abwesenheit": Abwesenheit.objects.filter(user=user).first(),
+            "plusadressen": list(user.plusadressen.order_by("gesperrt", "-letzte")),
+            "plus_beispiel": p.vereins_email.replace("@", "+stichwort@", 1),
+            "archive": archive_von(user),
             "server": settings.FV_MAIL_SERVER,
             "imap_port": settings.FV_MAIL_IMAP_PORT,
             "smtp_port": settings.FV_MAIL_SMTP_PORT,

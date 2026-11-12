@@ -45,6 +45,32 @@
         {% if mail.abwesenheit.aktiv %}eingeschaltet{% if mail.abwesenheit.von %} ab {{ mail.abwesenheit.von|date:"j.n.Y" }}{% endif %}{% if mail.abwesenheit.bis %} bis {{ mail.abwesenheit.bis|date:"j.n.Y" }}{% endif %}{% else %}aus{% endif %}
         – <a href="{% url 'mail_abwesenheit' %}">ändern</a></td></tr>
     </table>
+    {% if mail.archive %}
+    <p class="hilfe">Verteiler-Archiv{{ mail.archive|length|pluralize:"e" }}: {% for v in mail.archive %}{{ v.adresse }}{% if not forloop.last %}, {% endif %}{% endfor %}
+      – im Mailprogramm unter „Archiv“; dort liegen alle Mails an den Verteiler und alle, die in seinem Namen verschickt wurden.</p>
+    {% endif %}
+
+    <h3 id="plus">Plus-Adressen</h3>
+    <p class="hilfe">Mails an <strong>{{ mail.plus_beispiel }}</strong> (beliebiges Stichwort, z. B. bei der Anmeldung
+      in einem Shop) kommen in Ihrem Postfach an. Hier sehen nur Sie, welche Plus-Adressen schon Mail erhalten haben;
+      eine gesperrte Plus-Adresse nimmt keine Mails mehr an – praktisch, wenn sie in falsche Hände geraten ist.</p>
+    {% if mail.plusadressen %}
+    <table class="tabelle">
+      <thead><tr><th>Adresse</th><th>Mails</th><th>Zuletzt</th><th></th></tr></thead>
+      <tbody>
+      {% for pa in mail.plusadressen %}
+        <tr{% if pa.gesperrt %} class="gesperrt"{% endif %}><td>{{ pa.adresse }}</td><td>{{ pa.anzahl }}</td>
+          <td>{{ pa.letzte|date:"j.n.Y" }}</td>
+          <td><form method="post" action="{% url 'mail_plus_sperren' pa.pk %}">{% csrf_token %}
+            {% if pa.gesperrt %}<input type="hidden" name="aktion" value="freigeben"><span class="hilfe">gesperrt seit {{ pa.gesperrt_am|date:"j.n.Y" }}</span>
+              <button type="submit" class="link">freigeben</button>
+            {% else %}<input type="hidden" name="aktion" value="sperren"><button type="submit" class="link">sperren</button>{% endif %}
+          </form></td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+    {% else %}<p class="hilfe">Bisher kam keine Mail an eine Plus-Adresse.</p>{% endif %}
+
     <p class="hilfe">Papierkorb und Spam werden nach 90 Tagen automatisch geleert.
       {% if mail.nutzungsordnung %}Es gilt die <a href="{{ mail.nutzungsordnung.get_absolute_url }}">Nutzungsordnung der Postfächer</a>.{% endif %}</p>
 

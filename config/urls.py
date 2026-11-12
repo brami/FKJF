@@ -49,6 +49,7 @@ urlpatterns = [
     path("newsletter/<int:pk>/fortsetzen/", newsletter.fortsetzen, name="newsletter_fortsetzen"),
     path("konto/", konto.konto, name="konto"),
     path("konto/mail/abwesenheit/", mail.abwesenheit, name="mail_abwesenheit"),
+    path("konto/mail/plus/<int:pk>/", mail.plus_sperren, name="mail_plus_sperren"),
     path("konto/mail/postfach.mobileconfig", mail.einrichtungsprofil, name="mail_einrichtungsprofil"),
     path("mail/", mail.uebersicht, name="mail_uebersicht"),
     # E-Mail-Adressen pflegt der Vorstand; Registrierung gibt es nicht

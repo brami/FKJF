@@ -1,8 +1,13 @@
-# Webseite Förderverein KF/JF Kreuzau
+# FreiVerein
 
-Django-6.1-Anwendung: öffentliche Seiten und geschützter Bereich mit frei benennbaren
-Stufen (hier: Öffentlich < Fördermitglieder < Mitglieder < Vorstand), Anhängen mit Rechteprüfung,
-Versionsverlauf und (in Arbeit) Newsletter.
+**FreiVerein** ist freie Software (AGPL) für die Webseite und die Postfächer eines Vereins:
+öffentliche Seiten und geschützter Bereich mit frei benennbaren Stufen (hier: Öffentlich <
+Fördermitglieder < Mitglieder < Vorstand), Anhänge mit Rechteprüfung, Versionsverlauf,
+Newsletter sowie Vereinspostfächer, Verteiler und Aliase für einen eigenen Mailserver.
+Django-6.1-Anwendung; im Einsatz beim Förderverein KF/JF Kreuzau.
+
+Das Kürzel **fv** steht für FreiVerein: Dienste, Befehle und Pfade auf dem Server heißen
+`fv-web`, `fv-manage`, `fv-web-update`, `/etc/fv-web/` usw.
 
 Anforderungen: siehe Projekt-Dokument `webseite/anforderungen_django.md`.
 

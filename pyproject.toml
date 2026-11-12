@@ -1,7 +1,7 @@
 [project]
-name = "fv-web"
+name = "freiverein"
 version = "0.1.0"
-description = "Webseite des Fördervereins der Kinder- und Jugendfeuerwehr Kreuzau"
+description = "FreiVerein – freie Software für Webseite und Postfächer eines Vereins"
 requires-python = ">=3.13"
 license = "AGPL-3.0-or-later"
 license-files = ["LICENSE", "docs/LICENSE"]

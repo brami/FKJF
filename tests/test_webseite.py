@@ -124,7 +124,7 @@ def test_impressum_nur_oeffentliche_seiten():
 def test_ueber_diese_webseite_mit_lizenzhinweisen(client, settings):
     settings.FV_QUELLCODE_URL = "https://example.org/quellcode"
     html = client.get(reverse("ueber")).content.decode()
-    for text in ("Copyright © 2026 Michael Bramer", "GNU Affero General Public License",
+    for text in ("FreiVerein", "Copyright © 2026 Michael Bramer", "GNU Affero General Public License",
                  "ohne jede Gewährleistung", "https://example.org/quellcode", "TinyMCE",
                  "Creative Commons"):
         assert text in html

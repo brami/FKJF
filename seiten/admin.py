@@ -366,7 +366,8 @@ class WebseiteAdmin(admin.ModelAdmin):
 class VerteilerForm(forms.ModelForm):
     class Meta:
         model = Verteiler
-        fields = ["adresse", "beschreibung", "stufen", "personen", "weitere_adressen", "offen", "aktiv"]
+        fields = ["adresse", "beschreibung", "stufen", "personen", "weitere_adressen", "offen", "aktiv",
+                  "archiv", "archiv_tage"]
         widgets = {"stufen": forms.CheckboxSelectMultiple,
                    "weitere_adressen": forms.Textarea(attrs={"rows": 3})}
 
@@ -391,11 +392,17 @@ class VerteilerForm(forms.ModelForm):
 @admin.register(Verteiler)
 class VerteilerAdmin(NurVorstand, admin.ModelAdmin):
     form = VerteilerForm
-    list_display = ("adresse", "beschreibung", "empfaenger_text", "offen", "aktiv")
-    list_filter = ("aktiv", "offen")
+    list_display = ("adresse", "beschreibung", "empfaenger_text", "offen", "archiv", "aktiv")
+    list_filter = ("aktiv", "offen", "archiv")
     search_fields = ("adresse", "beschreibung")
     filter_horizontal = ("personen",)
-    readonly_fields = ("empfaenger_jetzt",)
+    readonly_fields = ("empfaenger_jetzt", "archiv_lesen")
+
+    @admin.display(description="Archiv lesen dürfen zurzeit")
+    def archiv_lesen(self, obj):
+        if not obj.pk or not obj.archiv:
+            return "–"
+        return ", ".join(mail.archiv_leser(obj)) or "niemand (keine Empfänger mit Postfach)"
 
     @admin.display(description="Empfänger")
     def empfaenger_text(self, obj):

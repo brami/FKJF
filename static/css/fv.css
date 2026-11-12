@@ -122,3 +122,5 @@ progress.balken.voll::-webkit-progress-value { background: #c0392b; }
 progress.balken.voll::-moz-progress-bar { background: #c0392b; }
 tr.warnung td { background: #fdf0ee; }
 input[type=search] { padding: .3rem; font: inherit; width: 18rem; max-width: 100%; }
+tr.gesperrt td { color: var(--grau); text-decoration: line-through; }
+tr.gesperrt td:last-child { text-decoration: none; }

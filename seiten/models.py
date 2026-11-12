@@ -473,6 +473,16 @@ class Verteiler(models.Model):
         help_text="Aus: Nur angemeldete Vereinspostfächer dürfen an diesen Verteiler senden.",
     )
     aktiv = models.BooleanField(default=True)
+    archiv = models.BooleanField(
+        "Archiv", default=False,
+        help_text="Jede Mail an den Verteiler und jede Mail, die im Namen des Verteilers verschickt "
+                  "wird, zusätzlich im Ordner „Archiv“ ablegen. Lesen dürfen ihn alle, die gerade "
+                  "Empfänger sind und ein Postfach haben – ein neuer Vorstand sieht ihn sofort.",
+    )
+    archiv_tage = models.PositiveIntegerField(
+        "Aufbewahrung (Tage)", null=True, blank=True,
+        help_text="Leer = unbegrenzt. Ältere Mails löscht der Mailserver automatisch.",
+    )
 
     class Meta:
         verbose_name = "Verteiler"
@@ -582,3 +592,29 @@ class Belegung(models.Model):
         if not self.grenze_bytes:
             return None
         return min(100, round(100 * self.bytes / self.grenze_bytes))
+
+
+class PlusAdresse(models.Model):
+    """Plus-Adresse (name+zusatz@…), an die schon Mail kam. Die Person kann sie sperren."""
+
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE,
+                             related_name="plusadressen")
+    adresse = models.EmailField(unique=True)
+    erste = models.DateTimeField("Erste Mail")
+    letzte = models.DateTimeField("Letzte Mail")
+    anzahl = models.PositiveIntegerField(default=0)
+    gesperrt = models.BooleanField(default=False)
+    gesperrt_am = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        verbose_name = "Plus-Adresse"
+        verbose_name_plural = "Plus-Adressen"
+        ordering = ["adresse"]
+
+    def __str__(self):
+        return self.adresse
+
+    @property
+    def zusatz(self):
+        lokal = self.adresse.split("@")[0]
+        return lokal.split("+", 1)[1] if "+" in lokal else ""

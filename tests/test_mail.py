@@ -15,8 +15,8 @@ from django.urls import reverse
 from django.utils import timezone
 
 from seiten import mail
-from seiten.models import (Abwesenheit, AdressSperre, Alias, Belegung, Profil, Stufe, Verteiler,
-                           Webseite)
+from seiten.models import (Abwesenheit, AdressSperre, Alias, Belegung, PlusAdresse, Profil, Stufe,
+                           Verteiler, Webseite)
 
 pytestmark = pytest.mark.django_db
 PW = "Ein-gutes-Passwort-2026"
@@ -466,6 +466,14 @@ def test_sichten_stimmen_mit_python_ueberein():
     assert _sicht("exim_adressen") == mail.exim_adressen()
     assert _sicht("exim_verteiler") == mail.exim_verteiler()
     assert _sicht("exim_absender") == mail.exim_absender()
+    verteiler(f"archiv@{DOM}", stufen=["Vorstand"], personen=[gast], archiv=True, archiv_tage=1825)
+    verteiler(f"unbegrenzt@{DOM}", personen=[vera], archiv=True)
+    mail.plusadressen_einlesen(f"vera+shop@{DOM}\nvera+bank@{DOM}")
+    PlusAdresse.objects.filter(adresse=f"vera+shop@{DOM}").update(gesperrt=True)
+    assert _sicht("exim_plus_gesperrt") == mail.exim_plus_gesperrt() == {(f"vera+shop@{DOM}",)}
+    assert _sicht("mail_archive") == mail.mail_archive()
+    assert _sicht("dovecot_archiv_leser") == mail.archiv_leser_alle()
+    assert {b for _, v, b in mail.archiv_leser_alle() if v == f"archiv@{DOM}"} == {f"vera@{DOM}", f"valter@{DOM}"}
     assert (f"w@{DOM}", "gesperrt", f"weg@{DOM}", True) in mail.exim_adressen()
     assert (f"vorstand@{DOM}", "verteiler", None, False) in mail.exim_adressen()
 
@@ -479,3 +487,105 @@ def test_dovecot_sicht_mit_verzeichnis_nach_nummer(settings):
     with connection.cursor() as c:
         c.execute("SELECT benutzer, home, nummer FROM dovecot_benutzer")
         assert c.fetchall() == [(f"max@{DOM}", f"/var/vmail/konten/{max_.pk}", max_.pk)]
+
+
+# ---------------------------------------------------------- Plus-Adressen
+
+def test_plus_teile_und_besitzer():
+    max_ = konto("max", f"max@{DOM}")
+    Alias.objects.create(user=max_, adresse=f"m@{DOM}")
+    assert mail.plus_teile(f"Max+Shop+x@{DOM}") == (f"max@{DOM}", "shop+x")
+    assert mail.plus_teile(f"max@{DOM}") == (f"max@{DOM}", "")
+    assert mail.plus_besitzer(f"max+a@{DOM}") == max_
+    assert mail.plus_besitzer(f"m+a@{DOM}") == max_
+    assert mail.plus_besitzer(f"niemand+a@{DOM}") is None
+    assert mail.plus_besitzer(f"max@{DOM}") is None
+
+
+def test_plusadressen_einlesen_zaehlt():
+    max_ = konto("max", f"max@{DOM}")
+    text = (f"2026-11-12 10:00:01 <max+shop@{DOM}>\nmax+shop@{DOM}\nmax@{DOM}\n"
+            f"fremd+x@{DOM}\nMax+Bank@{DOM}\n")
+    assert mail.plusadressen_einlesen(text) == 2
+    assert dict(PlusAdresse.objects.values_list("adresse", "anzahl")) == {
+        f"max+shop@{DOM}": 2, f"max+bank@{DOM}": 1}
+    out = StringIO()
+    import sys
+    alt = sys.stdin
+    try:
+        sys.stdin = StringIO(f"max+shop@{DOM}\n")
+        call_command("mail_plusadressen", stdout=out)
+    finally:
+        sys.stdin = alt
+    assert PlusAdresse.objects.get(adresse=f"max+shop@{DOM}").anzahl == 3
+    assert PlusAdresse.objects.get(adresse=f"max+shop@{DOM}").user == max_
+
+
+def test_plusadresse_sperren_und_freigeben(client):
+    max_ = konto("max", f"max@{DOM}")
+    mail.plusadressen_einlesen(f"max+shop@{DOM}")
+    pa = PlusAdresse.objects.get()
+    client.force_login(max_)
+    html = client.get(reverse("konto")).content.decode()
+    assert f"max+shop@{DOM}" in html and f"max+stichwort@{DOM}" in html
+    url = reverse("mail_plus_sperren", args=[pa.pk])
+    assert client.get(url).status_code == 405
+    client.post(url, {"aktion": "sperren"})
+    pa.refresh_from_db()
+    assert pa.gesperrt and pa.gesperrt_am
+    assert mail.exim_plus_gesperrt() == {(f"max+shop@{DOM}",)}
+    client.post(url, {"aktion": "freigeben"})
+    pa.refresh_from_db()
+    assert not pa.gesperrt and mail.exim_plus_gesperrt() == set()
+
+
+def test_fremde_plusadresse_nicht_sperrbar(client):
+    konto("max", f"max@{DOM}")
+    mail.plusadressen_einlesen(f"max+shop@{DOM}")
+    client.force_login(konto("anna", f"anna@{DOM}"))
+    r = client.post(reverse("mail_plus_sperren", args=[PlusAdresse.objects.get().pk]), {"aktion": "sperren"})
+    assert r.status_code == 404 and not PlusAdresse.objects.get().gesperrt
+
+
+def test_plusadressen_nicht_in_der_vorstandsuebersicht(vorstand_client):
+    konto("max", f"max@{DOM}")
+    mail.plusadressen_einlesen(f"max+geheim@{DOM}")
+    assert "geheim" not in vorstand_client.get(reverse("mail_uebersicht")).content.decode()
+
+
+# ----------------------------------------------------------- Archiv
+
+def test_archiv_leser_sind_aktuelle_empfaenger_mit_postfach():
+    vera = konto("vera", f"vera@{DOM}", gruppe="Vorstand")
+    konto("ohne_postfach", gruppe="Vorstand")
+    weg = konto("weg", f"weg@{DOM}", gruppe="Vorstand")
+    v = verteiler(f"vorstand@{DOM}", stufen=["Vorstand"], archiv=True)
+    assert mail.archiv_leser(v) == sorted([f"vera@{DOM}", f"weg@{DOM}"])
+    weg.is_active = False
+    weg.save()
+    assert mail.archiv_leser(v) == [f"vera@{DOM}"]
+    # neuer Vorstand sieht das Archiv sofort
+    neu = konto("neu", f"neu@{DOM}", gruppe="Mitglieder")
+    neu.groups.add(Group.objects.get(name="Vorstand"))
+    assert f"neu@{DOM}" in mail.archiv_leser(v)
+    assert [x.adresse for x in mail.archive_von(neu)] == [f"vorstand@{DOM}"]
+    v.archiv = False
+    v.save()
+    assert mail.archiv_leser(v) == [] and mail.archive_von(vera) == []
+
+
+def test_archiv_im_konto_und_in_der_verwaltung(client, vorstand_client):
+    vera = konto("vera", f"vera@{DOM}", gruppe="Vorstand")
+    v = verteiler(f"vorstand@{DOM}", stufen=["Vorstand"], archiv=True)
+    client.force_login(vera)
+    assert "Verteiler-Archiv" in client.get(reverse("konto")).content.decode()
+    html = vorstand_client.get(reverse("admin:seiten_verteiler_change", args=[v.pk])).content.decode()
+    assert f"vera@{DOM}" in html and "Archiv lesen dürfen" in html
+    assert "mit Archiv (unbegrenzt)" in vorstand_client.get(reverse("mail_uebersicht")).content.decode()
+
+
+def test_postfach_geloescht_entfernt_plusadressen():
+    max_ = konto("max", f"max@{DOM}")
+    mail.plusadressen_einlesen(f"max+shop@{DOM}")
+    mail.postfach_geloescht(max_)
+    assert not PlusAdresse.objects.exists()

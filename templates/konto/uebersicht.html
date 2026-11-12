@@ -24,6 +24,49 @@
     </form>
   {% endif %}
 
+  {% if mail %}
+    <h2 id="mail">Mail</h2>
+    <table class="tabelle">
+      <tr><th>Postfach</th><td>{{ mail.adresse }}</td></tr>
+      {% if mail.aliase %}<tr><th>Weitere Adressen</th><td>{% for a in mail.aliase %}{{ a.adresse }}{% if not forloop.last %}, {% endif %}{% endfor %}
+        <span class="hilfe">– kommen im selben Postfach an; Sie können auch mit ihnen senden</span></td></tr>{% endif %}
+      {% if mail.verteiler %}<tr><th>Verteiler</th><td>{% for v in mail.verteiler %}{{ v.adresse }}{% if not forloop.last %}, {% endif %}{% endfor %}
+        <span class="hilfe">– Sie erhalten diese Mails und dürfen mit diesen Adressen senden</span></td></tr>{% endif %}
+      <tr><th>Speicher</th><td>
+        {% if mail.belegung %}
+          <progress class="balken{% if mail.voll %} voll{% endif %}" max="100" value="{{ mail.prozent }}">{{ mail.prozent }} %</progress>
+          {{ mail.belegt_gb }} von {{ mail.grenze_gb }} GB belegt ({{ mail.prozent }} %), {{ mail.belegung.nachrichten }} Mails
+          <span class="hilfe">– Stand {{ mail.belegung.stand|date:"j.n.Y H:i" }}</span>
+          {% if mail.voll %}<p class="hilfe"><strong>Das Postfach ist fast voll.</strong> Löschen Sie nicht mehr benötigte Mails
+            (vor allem mit großen Anhängen), leeren Sie den Papierkorb oder speichern Sie Mails im Mailprogramm lokal.</p>{% endif %}
+        {% else %}{{ mail.grenze_gb }} GB<span class="hilfe"> – die Belegung wird angezeigt, sobald der Mailserver sie meldet</span>{% endif %}
+      </td></tr>
+      <tr><th>Abwesenheitsnotiz</th><td>
+        {% if mail.abwesenheit.aktiv %}eingeschaltet{% if mail.abwesenheit.von %} ab {{ mail.abwesenheit.von|date:"j.n.Y" }}{% endif %}{% if mail.abwesenheit.bis %} bis {{ mail.abwesenheit.bis|date:"j.n.Y" }}{% endif %}{% else %}aus{% endif %}
+        – <a href="{% url 'mail_abwesenheit' %}">ändern</a></td></tr>
+    </table>
+    <p class="hilfe">Papierkorb und Spam werden nach 90 Tagen automatisch geleert.
+      {% if mail.nutzungsordnung %}Es gilt die <a href="{{ mail.nutzungsordnung.get_absolute_url }}">Nutzungsordnung der Postfächer</a>.{% endif %}</p>
+
+    {% if mail.server %}
+    <h3>Mailprogramm einrichten</h3>
+    <ul>
+      <li>iPhone, iPad, Mac: <a href="{% url 'mail_einrichtungsprofil' %}">Einrichtungsprofil herunterladen</a>
+        <span class="hilfe">– öffnen und unter Einstellungen → Profil installieren; das Passwort wird dabei abgefragt</span></li>
+      <li>Andere Programme (Thunderbird, Android, Outlook): Adresse und Passwort eingeben, die Einstellungen werden meist
+        automatisch gefunden. Sonst von Hand:
+        <table class="tabelle">
+          <tr><th>Benutzername</th><td>{{ mail.adresse }}</td></tr>
+          <tr><th>Posteingang (IMAP)</th><td>{{ mail.server }}, Port {{ mail.imap_port }}, SSL/TLS</td></tr>
+          <tr><th>Postausgang (SMTP)</th><td>{{ mail.server }}, Port {{ mail.smtp_port }}, SSL/TLS, normales Passwort</td></tr>
+        </table></li>
+    </ul>
+    <p class="hilfe">Vom <em>neuen</em> Outlook für Windows und den Outlook-Apps wird deutlich abgeraten: Sie übertragen
+      Passwort und Mails an Microsoft – und damit auch den Zugang zur Webseite. Das klassische Outlook ist unproblematisch.{% if mail.anleitung %}
+      <a href="{{ mail.anleitung }}">Anleitung</a>{% endif %}</p>
+    {% endif %}
+  {% endif %}
+
   <h2>Sicherheit</h2>
   <ul>
     <li><a href="{% url 'account_change_password' %}">Passwort ändern</a>

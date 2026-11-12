@@ -169,7 +169,9 @@ def aenderung(user, **werte):
              "groups": [g.pk for g in user.groups.all()],
              "profil-TOTAL_FORMS": "1", "profil-INITIAL_FORMS": "0",
              "profil-MIN_NUM_FORMS": "0", "profil-MAX_NUM_FORMS": "1",
-             "profil-0-vereins_email": "", "profil-0-zustellung": "extern"}
+             "profil-0-vereins_email": "", "profil-0-zustellung": "extern",
+             "aliase-TOTAL_FORMS": "0", "aliase-INITIAL_FORMS": "0",
+             "aliase-MIN_NUM_FORMS": "0", "aliase-MAX_NUM_FORMS": "1000"}
     daten.update(werte)
     return daten
 

@@ -1,0 +1,82 @@
+{% extends "base.html" %}
+{% load static %}
+
+{% block titel %}Mail – {{ fv_webseite.name }}{% endblock %}
+{% block robots %}<meta name="robots" content="noindex">{% endblock %}
+
+{% block inhalt %}
+  <h1>Mail-Übersicht</h1>
+  <p class="hinweis">Postfächer und Aliase pflegen Sie bei den <a href="{% url 'admin:auth_user_changelist' %}">Benutzern</a>,
+    Verteiler unter <a href="{% url 'admin:seiten_verteiler_changelist' %}">Verteiler</a>.
+    Inhalte, Betreffzeilen und Anmeldezeiten der Postfächer sind hier bewusst nicht zu sehen.</p>
+  <p class="hilfe">Springen zu: <a href="#adressen">Adressen</a> · <a href="#verteiler">Verteiler</a> ·
+    <a href="#belegung">Belegung</a> · <a href="#abwesend">Abwesenheiten</a> · <a href="#gesperrt">Gesperrte Postfächer</a></p>
+
+  <h2 id="adressen">Alle Adressen</h2>
+  <p class="hilfe"><input type="search" id="suche" placeholder="Adresse oder Person suchen" aria-label="Adressen durchsuchen">
+    <a href="?csv=adressen">als Tabelle (CSV)</a></p>
+  <table class="tabelle" id="adresstabelle">
+    <thead><tr><th>Adresse</th><th>Art</th><th>Person / Beschreibung</th><th>Hinweis</th></tr></thead>
+    <tbody>
+    {% for adresse, art, person, hinweis in adressen %}
+      <tr><td>{{ adresse }}</td><td>{{ art }}</td><td>{{ person }}</td><td>{{ hinweis }}</td></tr>
+    {% empty %}<tr><td colspan="4">Noch keine Adressen.</td></tr>{% endfor %}
+    </tbody>
+  </table>
+
+  <h2 id="verteiler">Verteiler</h2>
+  <p class="hilfe"><a href="?csv=verteiler">als Tabelle (CSV)</a></p>
+  <table class="tabelle">
+    <thead><tr><th>Verteiler</th><th>Personen</th><th>Erhält Mails an</th></tr></thead>
+    <tbody>
+    {% for v, personen, weitere, alle in verteiler %}
+      <tr><td><a href="{% url 'admin:seiten_verteiler_change' v.pk %}">{{ v.adresse }}</a>
+            {% if not v.aktiv %}<br><span class="hilfe">ausgeschaltet</span>{% elif not v.offen %}<br><span class="hilfe">nur Vereinspostfächer dürfen schreiben</span>{% endif %}</td>
+          <td>{% if v.stufen.all %}<div>Stufe {% for s in v.stufen.all %}{{ s.name }}{% if not forloop.last %}, {% endif %}{% endfor %}</div>{% endif %}
+              {% if personen %}<div>{% for u in personen %}{{ u.get_full_name|default:u.username }}{% if not forloop.last %}, {% endif %}{% endfor %}</div>{% endif %}
+              {% if weitere %}<div>weitere: {{ weitere|join:", " }}</div>{% endif %}</td>
+          <td>{{ alle|join:", "|default:"niemand" }}</td></tr>
+    {% empty %}<tr><td colspan="3">Noch keine Verteiler.</td></tr>{% endfor %}
+    </tbody>
+  </table>
+
+  <h2 id="belegung">Belegung der Postfächer</h2>
+  <p class="hilfe"><a href="?csv=belegung">als Tabelle (CSV)</a></p>
+  <table class="tabelle">
+    <thead><tr><th>Postfach</th><th>Person</th><th>Belegt</th><th>Mails</th><th>Stand</th></tr></thead>
+    <tbody>
+    {% for z in belegung %}
+      <tr{% if z.voll %} class="warnung"{% endif %}><td>{{ z.adresse }}</td><td>{{ z.user.get_full_name|default:z.user.username }}</td>
+        <td>{% if z.b %}<progress class="balken{% if z.voll %} voll{% endif %}" max="100" value="{{ z.prozent }}">{{ z.prozent }} %</progress>
+            {{ z.belegt }} von {{ z.grenze }} GB ({{ z.prozent }} %){% else %}–{% endif %}</td>
+        <td>{{ z.b.nachrichten|default:"–" }}</td><td>{{ z.b.stand|date:"j.n.Y H:i"|default:"–" }}</td></tr>
+    {% empty %}<tr><td colspan="5">Keine Postfächer.</td></tr>{% endfor %}
+    </tbody>
+  </table>
+
+  <h2 id="abwesend">Abwesenheiten</h2>
+  <p class="hilfe"><a href="?csv=abwesend">als Tabelle (CSV)</a></p>
+  <table class="tabelle">
+    <thead><tr><th>Person</th><th>Postfach</th><th>Von</th><th>Bis</th></tr></thead>
+    <tbody>
+    {% for a in abwesend %}
+      <tr><td>{{ a.user.get_full_name|default:a.user.username }}</td><td>{{ a.user.profil.vereins_email }}</td>
+        <td>{{ a.von|date:"j.n.Y"|default:"sofort" }}</td><td>{{ a.bis|date:"j.n.Y"|default:"offen" }}</td></tr>
+    {% empty %}<tr><td colspan="4">Niemand ist als abwesend eingetragen.</td></tr>{% endfor %}
+    </tbody>
+  </table>
+
+  <h2 id="gesperrt">Gesperrte Postfächer</h2>
+  <p class="hilfe">Deaktivierte Konten oder Konten ohne Vereinsadresse. Das Postfach wird nach der Löschfrist
+    automatisch gelöscht; der Vorstand wird vorher per Mail erinnert. <a href="?csv=gesperrt">als Tabelle (CSV)</a></p>
+  <table class="tabelle">
+    <thead><tr><th>Person</th><th>Gesperrt seit</th><th>Löschung am</th></tr></thead>
+    <tbody>
+    {% for p, datum in gesperrt %}
+      <tr><td><a href="{% url 'admin:auth_user_change' p.user_id %}">{{ p.user.get_full_name|default:p.user.username }}</a></td>
+        <td>{{ p.postfach_gesperrt_seit|date:"j.n.Y" }}</td><td>{{ datum|date:"j.n.Y" }}</td></tr>
+    {% empty %}<tr><td colspan="3">Keine gesperrten Postfächer.</td></tr>{% endfor %}
+    </tbody>
+  </table>
+  <script src="{% static 'js/suche.js' %}"></script>
+{% endblock %}

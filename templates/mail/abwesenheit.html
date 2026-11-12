@@ -1,0 +1,16 @@
+{% extends "base.html" %}
+
+{% block titel %}Abwesenheitsnotiz – {{ fv_webseite.name }}{% endblock %}
+{% block robots %}<meta name="robots" content="noindex">{% endblock %}
+
+{% block inhalt %}
+  <h1>Abwesenheitsnotiz</h1>
+  <p class="hinweis">Während Ihrer Abwesenheit erhalten Absender einmal je Woche diese Antwort.
+    Ihre Mails werden weiter normal zugestellt.</p>
+  <form method="post" class="formular">
+    {% csrf_token %}
+    {{ form.as_div }}
+    <button type="submit">Speichern</button>
+    <a href="{% url 'konto' %}">Abbrechen</a>
+  </form>
+{% endblock %}

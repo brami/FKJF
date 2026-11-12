@@ -252,3 +252,14 @@ LOGGING = {
     "handlers": {"console": {"class": "logging.StreamHandler"}},
     "root": {"handlers": ["console"], "level": env("FV_LOG_LEVEL", "INFO")},
 }
+
+# Mailserver des Vereins (Postfächer und Verteiler werden in der Webseite gepflegt)
+FV_MAIL_DOMAIN = env("FV_MAIL_DOMAIN", "").strip().lower()          # z. B. foerderverein-kf-jf-kreuzau.de
+FV_MAIL_SERVER = env("FV_MAIL_SERVER", f"mail.{FV_MAIL_DOMAIN}" if FV_MAIL_DOMAIN else "")
+FV_MAIL_IMAP_PORT = int(env("FV_MAIL_IMAP_PORT", "993"))              # IMAP über TLS
+FV_MAIL_SMTP_PORT = int(env("FV_MAIL_SMTP_PORT", "465"))              # Versand über TLS
+FV_MAIL_QUOTA_GB = float(env("FV_MAIL_QUOTA_GB", "5"))                # Anzeige; durchgesetzt vom Mailserver
+FV_MAIL_LOESCHFRIST_TAGE = int(env("FV_MAIL_LOESCHFRIST_TAGE", "90"))  # gesperrtes Postfach → löschen
+FV_MAIL_VORWARNUNG_TAGE = int(env("FV_MAIL_VORWARNUNG_TAGE", "14"))    # Erinnerung an den Vorstand
+FV_MAIL_SPERRFRIST_TAGE = int(env("FV_MAIL_SPERRFRIST_TAGE", "365"))   # frei gewordene Adressen
+FV_MAIL_ANLEITUNG_URL = env("FV_MAIL_ANLEITUNG_URL", "")              # Link zur Anleitung (optional)

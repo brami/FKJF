@@ -1,0 +1,9 @@
+Guten Tag,
+
+die folgenden Postfächer wurden nach Ablauf der Löschfrist gelöscht:
+{% for name, adressen in geloescht %}
+- {{ name }}: {{ adressen|join:", " }}{% endfor %}
+
+Die Adressen bleiben gesperrt und werden erst nach der Sperrfrist neu vergeben.
+
+{{ webseite.name }}

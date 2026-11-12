@@ -221,11 +221,14 @@ def konto(request):
             profil.save()
             messages.success(request, "Ihre Einstellung wurde gespeichert.")
             return redirect("konto")
+    from .mail import mail_kontext
+
     return render(request, "konto/uebersicht.html", {
         "zwei_faktor": is_mfa_enabled(request.user, ["totp"]),
         "pflicht": settings.FV_ZWEI_FAKTOR_PFLICHT and rechte.darf_bearbeiten(request.user),
         "profil": profil,
         "zustellung_form": form,
+        **mail_kontext(request.user),
     })
 
 

@@ -17,7 +17,8 @@ from simple_history.admin import SimpleHistoryAdmin
 
 from . import rechte
 from .konto import mails_werden_verschickt, sende_einladung
-from .models import Anhang, Profil, Seite, Stufe, Webseite
+from . import mail
+from .models import AdressSperre, Alias, Anhang, Profil, Seite, Stufe, Verteiler, Webseite
 
 User = get_user_model()
 
@@ -73,6 +74,7 @@ class EindeutigeEmail:
             andere = andere.exclude(pk=self.instance.pk)
         if email and (andere.exists() or vereinsadressen.exists()):
             raise forms.ValidationError("Diese E-Mail-Adresse gehört bereits zu einem anderen Konto.")
+        mail.extern_pruefen(email)
         return email
 
 
@@ -87,6 +89,9 @@ class ProfilForm(forms.ModelForm):
             raise forms.ValidationError(
                 "Diese Adresse ist bereits als externe Adresse eingetragen. Die Vereinsadresse "
                 "muss sich von allen externen Adressen unterscheiden.")
+        if adresse:
+            user = self.instance.user if self.instance.user_id else None
+            mail.adresse_pruefen(adresse, user=user, vereinsadresse=True)
         return adresse
 
 
@@ -97,11 +102,44 @@ class ProfilInline(admin.StackedInline):
     max_num = 1
     verbose_name = "Postfach und Vereinsmails"
     verbose_name_plural = "Postfach und Vereinsmails"
+    fields = ("vereins_email", "zustellung", "postfach_hinweis")
+    readonly_fields = ("postfach_hinweis",)
+
+    @admin.display(description="Postfach")
+    def postfach_hinweis(self, obj):
+        if obj is None or not obj.pk or not obj.hat_postfach:
+            return "–"
+        if obj.postfach_gesperrt_seit:
+            return format_html("gesperrt seit {} – wird am {} gelöscht. Konto aktivieren und "
+                               "Vereinsadresse eintragen, um es zu behalten.",
+                               obj.postfach_gesperrt_seit.strftime("%d.%m.%Y"),
+                               mail.loeschdatum(obj).strftime("%d.%m.%Y"))
+        return "vorhanden. Ändern Sie die Vereinsadresse, wird die bisherige automatisch zum Alias."
 
     def has_view_permission(self, request, obj=None):
         return rechte.darf_bearbeiten(request.user)
 
     has_add_permission = has_change_permission = has_view_permission
+
+
+class AliasForm(forms.ModelForm):
+    class Meta:
+        model = Alias
+        fields = ["adresse"]
+
+    def clean_adresse(self):
+        user = self.instance.user if self.instance.user_id else None
+        return mail.adresse_pruefen(self.cleaned_data.get("adresse"), user=user, alias=self.instance)
+
+
+class AliasInline(NurVorstand, admin.TabularInline):
+    model = Alias
+    form = AliasForm
+    extra = 0
+    fields = ("adresse", "art", "angelegt")
+    readonly_fields = ("art", "angelegt")
+    verbose_name = "Alias-Adresse"
+    verbose_name_plural = "Alias-Adressen (kommen im selben Postfach an)"
 
 
 STUFE_HILFE = ("Die höchste Stufe bestimmt, was die Person sieht und ob sie Seiten bearbeiten darf. "
@@ -181,7 +219,11 @@ admin.site.unregister(Group)  # Gruppen entstehen automatisch zu jeder Stufe
 
 @admin.register(User)
 class BenutzerAdmin(NurVorstand, UserAdmin):
-    inlines = [ProfilInline]
+    inlines = [ProfilInline, AliasInline]
+
+    def get_inlines(self, request, obj):
+        # Aliase erst nach dem Anlegen (sie brauchen die Vereinsadresse)
+        return self.inlines if obj is not None else [ProfilInline]
     add_form = BenutzerAnlegenForm
     form = BenutzerAendernForm
     add_fieldsets = ((None, {"fields": ("username", "first_name", "last_name", "email",
@@ -317,3 +359,63 @@ class WebseiteAdmin(admin.ModelAdmin):
         if not self._admin(request):
             raise PermissionDenied
         return redirect("admin:seiten_webseite_change", Webseite.aktuell().pk)
+
+
+# ----------------------------------------------------------------- Mail
+
+class VerteilerForm(forms.ModelForm):
+    class Meta:
+        model = Verteiler
+        fields = ["adresse", "beschreibung", "stufen", "personen", "weitere_adressen", "offen", "aktiv"]
+        widgets = {"stufen": forms.CheckboxSelectMultiple,
+                   "weitere_adressen": forms.Textarea(attrs={"rows": 3})}
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields["personen"].queryset = User.objects.filter(is_active=True).order_by(
+            "last_name", "first_name", "username")
+
+    def clean_adresse(self):
+        return mail.adresse_pruefen(self.cleaned_data.get("adresse"), verteiler=self.instance)
+
+    def clean_weitere_adressen(self):
+        zeilen = [z.strip().lower() for z in (self.cleaned_data.get("weitere_adressen") or "").split()]
+        for z in zeilen:
+            try:
+                forms.EmailField().clean(z)
+            except forms.ValidationError:
+                raise forms.ValidationError(f"„{z}“ ist keine gültige E-Mail-Adresse.")
+        return "\n".join(dict.fromkeys(zeilen))
+
+
+@admin.register(Verteiler)
+class VerteilerAdmin(NurVorstand, admin.ModelAdmin):
+    form = VerteilerForm
+    list_display = ("adresse", "beschreibung", "empfaenger_text", "offen", "aktiv")
+    list_filter = ("aktiv", "offen")
+    search_fields = ("adresse", "beschreibung")
+    filter_horizontal = ("personen",)
+    readonly_fields = ("empfaenger_jetzt",)
+
+    @admin.display(description="Empfänger")
+    def empfaenger_text(self, obj):
+        return len(mail.verteiler_empfaenger(obj))
+
+    @admin.display(description="Empfänger zurzeit")
+    def empfaenger_jetzt(self, obj):
+        if not obj.pk:
+            return "–"
+        return ", ".join(mail.verteiler_empfaenger(obj)) or "niemand"
+
+
+@admin.register(AdressSperre)
+class AdressSperreAdmin(NurVorstand, admin.ModelAdmin):
+    """Frei gewordene Adressen. Der Vorstand kann eine Sperre vorzeitig aufheben (löschen)."""
+
+    list_display = ("adresse", "frei_ab", "user", "grund")
+    search_fields = ("adresse",)
+    fields = ("adresse", "frei_ab", "user", "grund")
+    readonly_fields = ("adresse", "user", "grund")
+
+    def has_add_permission(self, request, *args):
+        return False

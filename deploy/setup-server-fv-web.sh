@@ -55,6 +55,16 @@
 #    lokal:    logs/setup-<server>-<zeitstempel>.log (neben dem Skript)
 #    Server:   /var/log/fv-web-setup/<zeitstempel>.log, /var/log/fv-web-update.log
 #
+#  Einstellungsdatei (-f): empfohlen
+#    Alle dauerhaften Einstellungen eines Servers (Server, Domain, www, Mailserver,
+#    Backup-Ziel …) stehen in einer Datei, z. B. kreuzau.env. Das Skript liest sie,
+#    Optionen beim Aufruf ändern sie, und das Skript schreibt sie zurück. So geht
+#    bei späteren Aufrufen keine Einstellung verloren:
+#      ./setup-server-fv-web.sh -f kreuzau.env -H 203.0.113.10 -d foerderverein-kf-jf-kreuzau.de -W -M
+#      ./setup-server-fv-web.sh -f kreuzau.env -U          # später: alles wie gespeichert
+#    Einmalige Optionen (-c -U -N -L -r -a -m -y) werden nicht gespeichert.
+#    Abschalten (z. B. www): in der Datei auf 0 setzen.
+#
 #  Beispiele
 #    Nur prüfen (ändert nichts):
 #      ./setup-server-fv-web.sh -H 203.0.113.10 -d foerderverein-kf-jf-kreuzau.de -W -c
@@ -98,7 +108,12 @@ usage() {
   cat <<HILFE
 Aufruf: $0 -H <server> -d <domain> [Optionen]
 
-Pflicht:
+Einstellungsdatei (empfohlen):
+  -f <datei>      Einstellungen dieses Servers lesen und – mit den Änderungen aus den
+                  übrigen Optionen – zurückschreiben (wird beim ersten Mal angelegt).
+                  Dauerhaft gespeichert: -H -d -W -M -X -P -e -B -R -u -n -t -p -S. Nicht gespeichert: -c -U -N -L -r -a -m -y.
+
+Pflicht (ohne -f bzw. beim ersten Aufruf mit -f):
   -H <server>     IP-Adresse oder Name des vServers
   -d <domain>     Domain der Webseite, z. B. foerderverein-kf-jf-kreuzau.de
 
@@ -120,8 +135,9 @@ Anwendung:
 
 Mailserver:
   -M              Mailserver einrichten bzw. aktualisieren (Exim, Dovecot, rspamd);
-                  Rechnername mail.<domain> (anders: MAIL_HOST=… vor dem Aufruf).
+                  Rechnername mail.<domain> (anders: -X).
                   Braucht die installierte Anwendung; mit -U nur Anwendung + Mail.
+  -X <name>       anderer Rechnername für den Mailserver (Standard: mail.<domain>)
   -P <e-mail>     Betreuung: Ziel für postmaster@, abuse@, root@ …
                   (Standard: erste Adresse aus FV_ADMINS)
 
@@ -143,8 +159,70 @@ Optional:
 HILFE
 }
 
-while getopts ":H:d:r:R:a:m:e:B:u:n:t:p:P:LWUNMcSyh" opt; do
+# Einstellungen, die in der Datei (-f) gespeichert werden
+DAUERHAFT=(SERVER DOMAIN WITH_WWW WITH_MAIL MAIL_HOST POSTMASTER ACME_EMAIL BACKUP_REPO
+           REPO_URL ADMIN_USER NEW_HOSTNAME TIMEZONE SSH_PORT SKIP_HARDEN)
+EINSTELLUNGEN=""
+declare -A AUS_DATEI=()     # so beim Start in der Datei
+declare -A GESPEICHERT=()   # zuletzt geschrieben (für die Anzeige der Änderungen)
+
+einstellungen_lesen() {  # nur bekannte Schlüssel, Format KEY="wert" (kein source: keine Ausführung)
+  local zeile key wert k
+  while IFS= read -r zeile || [[ -n "$zeile" ]]; do
+    [[ "$zeile" =~ ^[[:space:]]*(#|$) ]] && continue
+    [[ "$zeile" =~ ^([A-Z_]+)=(.*)$ ]] || { echo "FEHLER: $EINSTELLUNGEN: Zeile nicht lesbar: $zeile" >&2; exit 2; }
+    key="${BASH_REMATCH[1]}"; wert="${BASH_REMATCH[2]}"
+    wert="${wert%\"}"; wert="${wert#\"}"
+    for k in "${DAUERHAFT[@]}"; do
+      # leerer MAIL_HOST = Standard mail.<domain>; dann gilt ggf. die Umgebungsvariable
+      if [[ "$k" == "$key" && "$key" == MAIL_HOST && -z "$wert" ]]; then AUS_DATEI[$key]=""; GESPEICHERT[$key]=""; continue 2; fi
+      if [[ "$k" == "$key" ]]; then printf -v "$key" '%s' "$wert"; AUS_DATEI[$key]="$wert"; GESPEICHERT[$key]="$wert"; continue 2; fi
+    done
+    echo "FEHLER: $EINSTELLUNGEN: unbekannte Einstellung $key" >&2; exit 2
+  done < "$EINSTELLUNGEN"
+}
+
+einstellungen_schreiben() {
+  local tmp k alt neu geaendert=0
+  tmp="$(mktemp)"
+  {
+    echo "# Einstellungen für setup-server-fv-web.sh -f $(basename "$EINSTELLUNGEN")"
+    echo "# Wird vom Skript geschrieben; Änderungen per Option oder hier von Hand."
+    echo "# Schalter: 1 = an, 0 = aus. Enthält keine Passwörter."
+    for k in "${DAUERHAFT[@]}"; do printf '%s="%s"\n' "$k" "${!k}"; done
+  } > "$tmp"
+  for k in "${DAUERHAFT[@]}"; do
+    alt="${GESPEICHERT[$k]-}"; neu="${!k}"
+    if [[ ! -v "GESPEICHERT[$k]" ]]; then
+      [[ -f "$EINSTELLUNGEN" ]] && { echo "  neu:      $k=\"$neu\""; geaendert=1; }
+    elif [[ "$alt" != "$neu" ]]; then
+      echo "  geändert: $k \"$alt\" → \"$neu\""; geaendert=1
+    fi
+  done
+  for k in "${DAUERHAFT[@]}"; do GESPEICHERT[$k]="${!k}"; done
+  if [[ ! -f "$EINSTELLUNGEN" ]]; then
+    mv "$tmp" "$EINSTELLUNGEN"; echo "Einstellungen gespeichert in $EINSTELLUNGEN"
+  elif [[ $geaendert -eq 1 ]]; then
+    mv "$tmp" "$EINSTELLUNGEN"; echo "Einstellungen aktualisiert: $EINSTELLUNGEN"
+  else
+    rm -f "$tmp"
+  fi
+}
+
+OPTSTRING=":f:H:d:r:R:a:m:e:B:u:n:t:p:P:X:LWUNMcSyh"
+while getopts "$OPTSTRING" opt; do
   case "$opt" in
+    f) EINSTELLUNGEN="$OPTARG" ;;
+    h) usage; exit 0 ;;
+    *) ;;
+  esac
+done
+if [[ -n "$EINSTELLUNGEN" && -f "$EINSTELLUNGEN" ]]; then einstellungen_lesen; fi
+OPTIND=1
+
+while getopts "$OPTSTRING" opt; do
+  case "$opt" in
+    f) ;;
     H) SERVER="$OPTARG" ;;
     d) DOMAIN="$OPTARG" ;;
     r) GIT_REF="$OPTARG" ;;
@@ -161,6 +239,7 @@ while getopts ":H:d:r:R:a:m:e:B:u:n:t:p:P:LWUNMcSyh" opt; do
     W) WITH_WWW=1 ;;
     M) WITH_MAIL=1 ;;
     P) POSTMASTER="$OPTARG" ;;
+    X) MAIL_HOST="$OPTARG" ;;
     U) UPDATE_ONLY=1 ;;
     N) NO_APP=1 ;;
     c) CHECK_ONLY=1 ;;
@@ -194,6 +273,18 @@ MAIL_HOST="${MAIL_HOST:-mail.$DOMAIN}"
 for v in "$ACME_EMAIL" "$BACKUP_REPO" "$TIMEZONE" "$NEW_HOSTNAME" "$REPO_URL"; do
   [[ "$v" != *[\"\$\`\\[:space:]]* ]] || { echo "Unzulässige Zeichen in einer Option: $v" >&2; exit 2; }
 done
+for v in WITH_WWW WITH_MAIL SKIP_HARDEN; do
+  [[ "${!v}" == 0 || "${!v}" == 1 ]] || { echo "$v muss 0 oder 1 sein (ist: ${!v})." >&2; exit 2; }
+done
+if [[ -n "$EINSTELLUNGEN" ]]; then
+  if [[ $CHECK_ONLY -eq 1 ]]; then echo "Nur prüfen (-c): $EINSTELLUNGEN bleibt unverändert."
+  else
+    # Standard-Mailname nicht festschreiben (folgt sonst einer geänderten Domain nicht)
+    [[ "$MAIL_HOST" == "mail.$DOMAIN" ]] && MAIL_HOST=""
+    einstellungen_schreiben
+    MAIL_HOST="${MAIL_HOST:-mail.$DOMAIN}"
+  fi
+fi
 
 # ----------------------------- Lokale Voraussetzungen ------------------------
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -288,6 +379,8 @@ for t in apt-get systemctl; do command -v $t >/dev/null || echo "fehlt=$t"; done
 [ -d /run/systemd/system ] || echo "fehlt=systemd (läuft nicht)"
 timeout 10 bash -c "exec 3<>/dev/tcp/deb.debian.org/80" 2>/dev/null || echo "fehlt=Internetzugang (deb.debian.org:80)"
 [ -f /etc/fv-web/env ] && echo "eingerichtet=ja"
+grep -q '^WITH_WWW="1"' /etc/fv-web/deploy.env 2>/dev/null && echo "www=1"
+[ -f /etc/fv-mail/mail.env ] && echo "mail=ja"
 # Andere Programme auf Port 80/443 (z. B. Apache des bisherigen Drupal)?
 if command -v ss >/dev/null; then
   ss -Hltnp '( sport = :80 or sport = :443 )' 2>/dev/null \
@@ -307,6 +400,22 @@ if grep -q '^belegt=' <<<"$REMOTE_CHECK"; then
 fi
 if [[ $UPDATE_ONLY -eq 1 ]] && ! grep -q '^eingerichtet=ja' <<<"$REMOTE_CHECK"; then
   fail "-U: Der Server ist noch nicht eingerichtet (/etc/fv-web/env fehlt). Bitte zuerst ohne -U ausführen."
+fi
+# Vorhandene Einrichtung nicht versehentlich zurückbauen (vergessene Option)
+if grep -q '^www=1' <<<"$REMOTE_CHECK" && [[ $WITH_WWW -eq 0 ]]; then
+  if [[ -v "AUS_DATEI[WITH_WWW]" ]]; then
+    log "HINWEIS: www.$DOMAIN ist eingerichtet, laut $EINSTELLUNGEN aber abgeschaltet – wird entfernt."
+  else
+    WITH_WWW=1
+    log "www.$DOMAIN ist auf dem Server eingerichtet – bleibt erhalten (wie -W)."
+    if [[ -n "$EINSTELLUNGEN" && $CHECK_ONLY -eq 0 ]]; then
+      [[ "$MAIL_HOST" == "mail.$DOMAIN" ]] && MAIL_HOST=""
+      einstellungen_schreiben; MAIL_HOST="${MAIL_HOST:-mail.$DOMAIN}"
+    fi
+  fi
+fi
+if grep -q '^mail=ja' <<<"$REMOTE_CHECK" && [[ $WITH_MAIL -eq 0 ]]; then
+  log "HINWEIS: Der Mailserver ist eingerichtet; ohne -M bleibt seine Konfiguration unverändert."
 fi
 log "Server-Voraussetzungen geprüft."
 

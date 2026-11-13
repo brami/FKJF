@@ -5,6 +5,7 @@ die nur im eingebetteten Befehl fv-web-update definiert ist – genau so ein Feh
 hätte einmal die Erstinstallation abgebrochen.
 """
 
+import os
 import re
 import subprocess
 from pathlib import Path
@@ -217,3 +218,65 @@ def test_rspamd_force_actions_syntax(tmp_path):
     assert m
     datei.write_text(m.group(1))
     assert 'action = "reject"' in m.group(1) and "MIME_BAD_EXTENSION" in m.group(1)
+
+
+# ------------------------------------------------------- Einstellungsdatei (-f)
+
+def _aufruf(tmp_path, *argumente, umgebung=None):
+    """Skript mit einem ssh, das immer scheitert: läuft bis zur Verbindung, d. h.
+    Optionen, Einstellungsdatei und Prüfungen werden echt ausgeführt."""
+    bindir = tmp_path / "bin"
+    bindir.mkdir(exist_ok=True)
+    (bindir / "ssh").write_text("#!/bin/sh\nexit 255\n")
+    (bindir / "ssh").chmod(0o755)
+    env = {k: v for k, v in os.environ.items() if k != "MAIL_HOST"}
+    env.update({"PATH": f"{bindir}:{os.environ['PATH']}", **(umgebung or {})})
+    return subprocess.run(["bash", str(SKRIPT), *argumente, "-y"], cwd=tmp_path,
+                          capture_output=True, text=True, env=env)
+
+
+def _werte(datei):
+    return dict(re.findall(r'^([A-Z_]+)="(.*)"$', datei.read_text(), re.M))
+
+
+def test_einstellungsdatei_merkt_sich_optionen(tmp_path):
+    datei = tmp_path / "kreuzau.env"
+    _aufruf(tmp_path, "-f", str(datei), "-H", "203.0.113.10", "-d", "verein.example",
+            "-W", "-M", "-P", "betreuung@example.org", "-B", "sftp://u@h:23/fv")
+    w = _werte(datei)
+    assert w["SERVER"] == "203.0.113.10" and w["DOMAIN"] == "verein.example"
+    assert w["WITH_WWW"] == "1" and w["WITH_MAIL"] == "1"
+    assert w["POSTMASTER"] == "betreuung@example.org" and w["BACKUP_REPO"] == "sftp://u@h:23/fv"
+    assert w["MAIL_HOST"] == ""                     # Standard mail.<domain> wird nicht festgeschrieben
+    # später nur -U: nichts geht verloren, Datei bleibt gleich
+    vorher = datei.read_text()
+    r = _aufruf(tmp_path, "-f", str(datei), "-U")
+    assert datei.read_text() == vorher
+    assert "Einstellungen aktualisiert" not in r.stdout
+    # Änderung per Option wird gemeldet und gespeichert
+    r = _aufruf(tmp_path, "-f", str(datei), "-X", "smtp.verein.example")
+    assert 'geändert: MAIL_HOST "" → "smtp.verein.example"' in r.stdout
+    assert _werte(datei)["MAIL_HOST"] == "smtp.verein.example"
+    # -c ändert die Datei nicht
+    vorher = datei.read_text()
+    _aufruf(tmp_path, "-f", str(datei), "-t", "UTC", "-c")
+    assert datei.read_text() == vorher
+
+
+def test_einstellungsdatei_wird_geprueft(tmp_path):
+    datei = tmp_path / "x.env"
+    datei.write_text('SERVER="203.0.113.10"\nDOMAIN="verein.example"\nWITH_WWW="ja"\n')
+    r = _aufruf(tmp_path, "-f", str(datei))
+    assert r.returncode == 2 and "WITH_WWW muss 0 oder 1 sein" in r.stderr
+    datei.write_text('SERVER="203.0.113.10"\nDOMAIN="verein.example"\nRM="$(rm -rf /)"\n')
+    r = _aufruf(tmp_path, "-f", str(datei))
+    assert r.returncode == 2 and "unbekannte Einstellung RM" in r.stderr
+    datei.write_text('SERVER="203.0.113.10"\nDOMAIN="$(touch boese)"\n')
+    _aufruf(tmp_path, "-f", str(datei))
+    assert not (tmp_path / "boese").exists()        # Datei wird gelesen, nicht ausgeführt
+
+
+def test_vorhandenes_www_bleibt_erhalten():
+    """Ohne -W wird ein auf dem Server eingerichtetes www nicht stillschweigend entfernt."""
+    assert "grep -q '^WITH_WWW=\"1\"' /etc/fv-web/deploy.env" in TEXT
+    assert "bleibt erhalten (wie -W)" in TEXT

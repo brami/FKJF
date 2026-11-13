@@ -25,7 +25,7 @@
     \rule{\textwidth}{0.4pt}}}
 \makeatother
 \renewcommand*{\dsdokumentart}{Betriebshandbuch}
-\renewcommand*{\dskurztitel}{Webseite -- Betriebshandbuch}
+\renewcommand*{\dskurztitel}{Webseite und Mail -- Betriebshandbuch}
 \renewcommand*{\dsbeleg}{}
 \setlength{\emergencystretch}{3em}
 
@@ -38,12 +38,14 @@
              {Ü}{{\"U}}1 {ß}{{\ss}}1 {–}{{--}}1 {…}{{\dots}}1 {→}{{$\rightarrow$}}1}}
 \newcommand*{\cmd}[1]{\texttt{#1}}
 \newcommand*{\pfad}[1]{\texttt{#1}}
+% Abhaken bei der Einrichtung
+\newcommand*{\erledigt}{\makebox[1.4em][l]{\setlength{\fboxsep}{0pt}\fbox{\rule{0pt}{0.7em}\hspace{0.7em}}}}
 
 \begin{document}
 
-\dstitel{Betriebshandbuch der Webseite}
-        {Für die Betreuung: Server einrichten, Updates, Einstellungen, Datensicherung,
-         Störungen, Wartung}
+\dstitel{Betriebshandbuch der Webseite und des Mailservers}
+        {Für die Betreuung: Server einrichten, Mailserver, Updates, Einstellungen,
+         Datensicherung, Störungen, Wartung}
         {Webseite: & \url{https://foerderverein-kf-jf-kreuzau.de}\\
          Quellcode: & \url{https://github.com/brami/FKJF}\\
          Server:   & vServer mit Debian 13, Admin-Benutzer \cmd{fkjs}\\
@@ -59,6 +61,8 @@ sudo fv-web-restore -t        & Wiederherstellungstest (ändert nichts) \\
 sudo fv-manage <befehl>       & Befehle der Anwendung (siehe Abschnitt~\ref{sec:verwaltung}) \\
 systemctl status fv-web       & läuft die Webseite? \\
 journalctl -u fv-web -e       & Protokoll der Webseite \\
+sudo fv-mail status           & Mailserver: Dienste, Warteschlange, Zertifikat \\
+sudo fv-mail dns              & Mailserver: DNS-Einträge anzeigen und prüfen \\
 \end{tabularx}
 \end{dshinweis}
 
@@ -71,7 +75,8 @@ journalctl -u fv-web -e       & Protokoll der Webseite \\
 
 Die Webseite ist eine eigene Anwendung auf Basis von Django. Sie läuft allein auf
 einem vServer, ausschließlich mit Paketen aus Debian (kein Docker). Den Quellcode
-holt der Server selbst von GitHub.
+holt der Server selbst von GitHub. Auf demselben Server läuft der Mailserver des
+Vereins; Adressen, Postfächer und Verteiler pflegt der Vorstand in der Webseite.
 
 \begin{figure}[h]
 \centering
@@ -85,19 +90,22 @@ holt der Server selbst von GitHub.
   \node[box, right=1.1cm of caddy, draw=dsrot, very thick] (app) {\textbf{fv-web}\\gunicorn + Django};
   \node[daten, below=0.9cm of app] (db) {\textbf{PostgreSQL 17}\\Datenbank fvweb};
   \node[daten, below=0.9cm of caddy] (files) {\textbf{Anhänge}\\/var/lib/fv-web/private};
-  \node[box, right=1.1cm of db] (nl) {\textbf{fv-web-newsletter}\\Versanddienst};
-  \node[box, above=0.9cm of nl] (smtp) {\textbf{Mailserver}\\(SMTP)};
+  \node[box, right=1.1cm of db] (mail) {\textbf{Mailserver}\\Exim, Dovecot, rspamd};
+  \node[box, above=0.9cm of mail] (prog) {\textbf{Mailprogramme}\\IMAP, SMTP};
   \node[box, below=0.9cm of files] (backup) {\textbf{fv-web-backup}\\täglich 03:30 (restic)};
   \node[daten, left=1.1cm of backup] (ziel) {\textbf{Backup-Ziel}\\lokal oder extern};
+  \node[daten, below=0.9cm of mail] (vmail) {\textbf{Postfächer}\\/var/vmail};
   \draw[pf, <->] (browser) -- (caddy);
   \draw[pf, <->] (caddy) -- node[lbl, above]{Socket} (app);
   \draw[pf, <->] (app) -- (db);
   \draw[pf, <->] (app) -- (files);
-  \draw[pf] (nl) -- (db);
-  \draw[pf] (nl) -- (smtp);
-  \draw[pf] (app) -- (smtp);
+  \draw[pf] (mail) -- node[lbl, above]{liest} (db);
+  \draw[pf] (app) -- node[lbl, above, sloped]{SMTP} (mail);
+  \draw[pf, <->] (prog) -- (mail);
+  \draw[pf, <->] (mail) -- (vmail);
   \draw[pf] (db) |- (backup);
   \draw[pf] (files) -- (backup);
+  \draw[pf] (vmail) |- (backup);
   \draw[pf] (backup) -- (ziel);
 \end{tikzpicture}
 \caption{Bestandteile auf dem Server}
@@ -117,7 +125,17 @@ caddy.service             & HTTPS, Zertifikat von Let's Encrypt (automatisch), s
 postgresql.service        & Datenbank \\
 fv-web-backup.timer       & tägliche Sicherung gegen 03:30 \\
 unattended-upgrades       & automatische Sicherheitsupdates von Debian \\
-fail2ban, ufw             & Schutz für SSH, Firewall (offen: SSH, 80, 443) \\
+fail2ban, ufw             & Schutz gegen falsche Passwörter (SSH, Mail), Firewall \\
+\midrule
+exim4.service             & Mailserver: empfängt (Port 25) und verschickt Mails, nimmt Mails der
+                            Mailprogramme an (465, 587) \\
+dovecot.service           & Postfächer: IMAP (993), eigene Filterregeln (4190), Speichergrenze \\
+rspamd.service, redis     & Spam, Greylisting, unzulässige Anhänge \\
+unbound.service           & eigener DNS-Resolver mit DNSSEC-Prüfung \\
+fv-mail-sync.timer        & alle 5 Minuten: Abwesenheitsnotizen, Archiv-Rechte, Belegung,
+                            Plus-Adressen mit der Webseite abgleichen \\
+fv-mail-taeglich.timer    & täglich 04:15: Erinnerungen und Löschungen gesperrter Postfächer \\
+certbot.timer             & verlängert das Zertifikat für \cmd{mail.<domain>} \\
 \bottomrule
 \end{tabularx}
 \end{center}
@@ -143,6 +161,15 @@ fail2ban, ufw             & Schutz für SSH, Firewall (offen: SSH, 80, 443) \\
 /var/log/fv-web-update.log & Protokoll aller Updates \\
 /var/log/caddy/fv-web.log  & Zugriffe auf die Webseite \\
 /etc/caddy/Caddyfile       & wird von \cmd{fv-web-update} geschrieben -- nicht von Hand ändern \\
+\midrule
+/var/vmail/konten/<nr>     & Postfach des Kontos Nummer \cmd{<nr>} (Maildir) \\
+/var/vmail/archiv          & Archive der Verteiler \\
+/etc/fv-mail/mail.env      & Mailserver: Rechnername, DKIM-Selektor, Geheimnisse (nur root) \\
+/etc/fv-mail/dkim, /tls    & DKIM-Schlüssel, Zertifikat für \cmd{mail.<domain>} \\
+/etc/fv-mail/aliases       & Ziel für postmaster@, abuse@, root@ (die Betreuung) \\
+/etc/exim4/exim4.conf, /etc/dovecot/dovecot.conf, /etc/rspamd/local.d/
+                           & schreibt das Einrichtungsskript -- nicht von Hand ändern \\
+/var/log/exim4/mainlog     & alle Mails (ohne Betreff), 14 Tage \\
 \bottomrule
 \end{tabularx}
 \end{center}
@@ -154,8 +181,12 @@ fail2ban, ufw             & Schutz für SSH, Firewall (offen: SSH, 80, 443) \\
     \cmd{sudo} ohne Passwort. Anmeldung als root und mit Passwort ist abgeschaltet.
   \item[\cmd{fvweb} (Linux und PostgreSQL)] Dienstbenutzer der Anwendung; Datenbankzugriff
     nur lokal über den Socket, ohne Passwort.
-  \item[\cmd{dovecot} (PostgreSQL)] für den späteren Mailserver; darf nur die Sicht
-    \cmd{dovecot\_benutzer} lesen (Vereinsadressen und Passwort-Hashes).
+  \item[\cmd{dovecot}, \cmd{Debian-exim} (PostgreSQL)] Rollen des Mailservers; dürfen nur
+    die für sie bestimmten Sichten lesen (Adressen, Verteiler, Passwort-Hashes), nichts
+    schreiben. Die Leserechte vergibt \cmd{fv-web-update} bei jeder Installation neu.
+  \item[\cmd{vmail} (Linux)] Besitzer aller Postfächer.
+  \item[\cmd{fv-archiv@<domain>}] internes Postfach für die Archive der Verteiler; keine
+    Anmeldung möglich.
   \item[Administrator der Webseite] Konto der Webseite mit vollen Rechten
     (\emph{Superuser}); sieht zusätzlich \emph{Stufen} und \emph{Einstellungen der
     Webseite}. Anlegen siehe Abschnitt~\ref{sec:verwaltung}.
@@ -211,6 +242,7 @@ prüft, ob er schon erledigt ist. \cmd{-h} zeigt alle Optionen.
   \item Mit dem Link Passwort setzen, anmelden, Zwei-Faktor-Anmeldung einrichten.
   \item In der Verwaltung unter \emph{Einstellungen der Webseite} die \emph{Weitere
         Antwortadresse} (Vorstand) eintragen; \emph{Stufen} prüfen.
+  \item \textbf{Mailserver} einrichten: Abschnitt~\ref{sec:mail}.
   \item Vorstandsmitglieder in der Verwaltung anlegen und einladen (siehe
         Vorstandsanleitung). Solange kein Mailserver eingetragen ist, zeigt die
         Verwaltung den Einladungslink an; er muss dann selbst weitergegeben werden.
@@ -220,15 +252,251 @@ Protokolle der Einrichtung: lokal \pfad{logs/setup-<server>-<zeit>.log} neben de
 Skript, auf dem Server \pfad{/var/log/fv-web-setup/}.
 
 % ==================================================================
+\section{Mailserver einrichten -- Schritt für Schritt}\label{sec:mail}
+
+Den Mailserver richtet das Einrichtungsskript mit \cmd{-M} ein. Einiges lässt sich
+aber nur \textbf{von Hand} erledigen: Einträge im DNS (bei SchlundTech), der
+Reverse-DNS-Eintrag beim Server-Anbieter und die Tests. Diese Schritte stehen hier
+in der richtigen Reihenfolge, zum Abhaken. In den Beispielen steht
+\cmd{foerderverein-kf-jf-kreuzau.de} für die Domain, \cmd{203.0.113.10} und
+\cmd{2001:db8::10} für die Adressen des Servers.
+
+\begin{dshinweis}[title={Reihenfolge ist wichtig}]
+Der \textbf{MX-Eintrag} (Schritt~\ref{mx}) wird als \emph{letzter} umgestellt. Bis dahin
+kommen Mails von außen weiter beim bisherigen Anbieter an, und alles andere lässt sich
+in Ruhe einrichten und testen. Gibt es noch keinen bisherigen Anbieter, kann der MX
+gleich mit den übrigen Einträgen gesetzt werden.
+\end{dshinweis}
+
+\subsection{Vorbereitung (einige Tage vorher)}
+
+\begin{enumerate}
+  \item\label{ttl} \erledigt\textbf{TTL senken.} Bei SchlundTech in der Zone der Domain die
+        TTL des bestehenden MX-Eintrags auf \cmd{300} (5~Minuten) setzen. Danach
+        mindestens so lange warten wie die \emph{alte} TTL (meist einen Tag). Dann
+        wirkt die spätere Umstellung schnell, und ein Zurück ist schnell möglich.
+  \item \erledigt\textbf{Port 25 beim Server-Anbieter.} Manche Anbieter sperren ausgehende
+        Verbindungen auf Port~25 bei neuen Servern. Das Skript prüft das und warnt;
+        im Zweifel vorher im Kundenmenü nachsehen oder beim Support freischalten lassen.
+  \item \erledigt\textbf{Reverse-DNS (PTR) beim Server-Anbieter} setzen, im Kundenmenü
+        des Servers (nicht bei SchlundTech):
+\begin{befehl}
+203.0.113.10   →  mail.foerderverein-kf-jf-kreuzau.de
+2001:db8::10   →  mail.foerderverein-kf-jf-kreuzau.de   (falls der Server IPv6 hat)
+\end{befehl}
+        Ohne passenden PTR landen Mails bei großen Anbietern im Spam oder werden
+        abgewiesen. Lässt sich für IPv6 kein PTR setzen, verschickt der Mailserver
+        automatisch nur über IPv4.
+  \item \erledigt\textbf{Adresse der Betreuung festlegen}, an die postmaster@, abuse@ und
+        root@ gehen (eine Adresse \emph{außerhalb} der eigenen Domain, damit Meldungen
+        auch bei einer Störung des Mailservers ankommen).
+\end{enumerate}
+
+\subsection{DNS für den Mailserver-Namen}
+
+\begin{enumerate}[resume]
+  \item \erledigt\textbf{Neue Einträge bei SchlundTech} (\emph{Domains $\rightarrow$
+        DNS-Einstellungen bzw. Zone bearbeiten}):
+\begin{befehl}
+mail.foerderverein-kf-jf-kreuzau.de.     A      203.0.113.10
+mail.foerderverein-kf-jf-kreuzau.de.     AAAA   2001:db8::10     (nur mit IPv6 und PTR)
+mta-sts.foerderverein-kf-jf-kreuzau.de.  A      203.0.113.10
+\end{befehl}
+        Die bestehenden Einträge der Webseite und den MX \textbf{noch nicht} ändern.
+  \item \erledigt\textbf{Prüfen}, ob die Einträge sichtbar sind (auf dem eigenen Rechner):
+\begin{befehl}
+dig +short A mail.foerderverein-kf-jf-kreuzau.de @1.1.1.1
+dig +short -x 203.0.113.10 @1.1.1.1
+\end{befehl}
+        Beide müssen das Erwartete zeigen, bevor es weitergeht.
+\end{enumerate}
+
+\subsection{Einrichtungsskript}
+
+\begin{enumerate}[resume]
+  \item \erledigt\textbf{Skript mit \cmd{-M} aufrufen.} Auf einem schon eingerichteten Server
+        einmal \emph{ohne} \cmd{-U}, damit auch die Datensicherung die Postfächer
+        aufnimmt; später genügt \cmd{-U -M}.
+\begin{befehl}
+./setup-server-fv-web.sh -H 203.0.113.10 -d foerderverein-kf-jf-kreuzau.de -W \
+    -M -P betreuung@example.org
+\end{befehl}
+        Das Skript installiert Exim, Dovecot, rspamd, Redis, unbound und certbot,
+        holt das Zertifikat für \cmd{mail.<domain>}, erzeugt den DKIM-Schlüssel, öffnet
+        die Ports 25, 465, 587, 993 und 4190, stellt die Webseite auf den eigenen
+        Mailserver um und gibt am Ende die nötigen DNS-Einträge aus.
+  \item \erledigt\textbf{Ausgaben beachten:}
+    \begin{itemize}
+      \item \emph{WARNUNG: PTR \dots} -- Reverse-DNS stimmt noch nicht (Schritt~3).
+      \item \emph{WARNUNG: Ausgehender Port 25 scheint gesperrt} -- Anbieter fragen.
+      \item \emph{HINWEIS: \dots\ zeigt noch nicht auf \dots\ – kein Zertifikat} -- dann
+            gilt vorläufig ein selbst signiertes Zertifikat; nach dem DNS-Eintrag das
+            Skript noch einmal mit \cmd{-U -M} aufrufen.
+      \item \emph{FEHLER: Dovecot-Konfiguration ungültig} -- die bisherige bleibt aktiv;
+            Meldung notieren und an die Entwicklung geben (\cmd{sudo doveconf -n -c
+            /etc/dovecot/dovecot.conf.neu}).
+    \end{itemize}
+\end{enumerate}
+
+\subsection{DNS-Einträge für Mail}
+
+\begin{enumerate}[resume]
+  \item \erledigt\textbf{Einträge anzeigen} (auf dem Server):
+\begin{befehl}
+sudo fv-mail dns
+\end{befehl}
+        Die Ausgabe enthält alle Einträge mit den richtigen Werten, insbesondere den
+        DKIM-Schlüssel. Sie sieht etwa so aus:
+\begin{befehl}
+foerderverein-kf-jf-kreuzau.de.             TXT  "v=spf1 mx -all"
+mail.foerderverein-kf-jf-kreuzau.de.        TXT  "v=spf1 a -all"
+fv2026._domainkey.foerderverein-kf-jf-kreuzau.de.  TXT  "v=DKIM1; k=rsa; p=MIIBIjAN…"
+_dmarc.foerderverein-kf-jf-kreuzau.de.      TXT  "v=DMARC1; p=none; rua=mailto:postmaster@…"
+_mta-sts.foerderverein-kf-jf-kreuzau.de.    TXT  "v=STSv1; id=20261113120000"
+_smtp._tls.foerderverein-kf-jf-kreuzau.de.  TXT  "v=TLSRPTv1; rua=mailto:postmaster@…"
+_submissions._tcp.foerderverein-kf-jf-kreuzau.de.  SRV  0 1 465 mail.foerderverein-kf-jf-kreuzau.de.
+_imaps._tcp.foerderverein-kf-jf-kreuzau.de.        SRV  0 1 993 mail.foerderverein-kf-jf-kreuzau.de.
+\end{befehl}
+  \item \erledigt\textbf{Bei SchlundTech eintragen} -- alle TXT- und SRV-Einträge aus der
+        Ausgabe, \textbf{außer dem MX}. Hinweise:
+    \begin{itemize}
+      \item \textbf{SPF:} Gibt es schon einen TXT-Eintrag \cmd{v=spf1 \dots} für die
+            Domain (vom bisherigen Anbieter), diesen \emph{ersetzen}, nicht einen
+            zweiten anlegen. Bis zur Umstellung des MX darf der alte Anbieter noch
+            darin stehen, z.\,B.\ \cmd{v=spf1 mx a:mail.foerderverein-kf-jf-kreuzau.de
+            include:<alter-anbieter> -all}; nach der Umstellung auf \cmd{v=spf1 mx -all}
+            kürzen.
+      \item \textbf{DKIM:} Der Wert ist länger als 255 Zeichen. Die Ausgabe teilt ihn
+            in mehrere Teile in Anführungszeichen; SchlundTech nimmt den ganzen Wert
+            meist auch am Stück. Name: \cmd{fv2026.\_domainkey} (Selektor laut Ausgabe).
+      \item \textbf{DMARC} zunächst mit \cmd{p=none}: Es wird nur berichtet, nichts
+            abgewiesen. Verschärfen nach einigen Wochen (Schritt~\ref{dmarc}).
+      \item \textbf{SRV-Einträge} helfen Mailprogrammen bei der Einrichtung. Die
+            Einträge mit Ziel \cmd{.} (Punkt) sagen „gibt es nicht“ (kein
+            unverschlüsseltes IMAP, kein POP3) und sind optional.
+      \item \textbf{TLSA} nur eintragen, wenn DNSSEC eingeschaltet ist (nächster Schritt).
+    \end{itemize}
+  \item \erledigt\textbf{DNSSEC (empfohlen, aber freiwillig).} Bei SchlundTech für die
+        Domain DNSSEC einschalten. Erst wenn \cmd{dig +dnssec
+        foerderverein-kf-jf-kreuzau.de SOA} im Kopf \cmd{ad} zeigt, den
+        TLSA-Eintrag aus \cmd{fv-mail dns} setzen:
+\begin{befehl}
+_25._tcp.mail.foerderverein-kf-jf-kreuzau.de.  TLSA  3 1 1 <wert aus fv-mail dns>
+\end{befehl}
+        Der Wert bleibt bei Zertifikatsverlängerungen gleich (der Schlüssel wird
+        weiterverwendet). Wird der Schlüssel doch einmal ausgetauscht, \emph{zuerst} den
+        neuen TLSA-Eintrag \emph{zusätzlich} setzen und erst nach einem Tag den alten
+        entfernen.
+  \item \erledigt\textbf{Skript noch einmal} mit \cmd{-U -M} aufrufen. Jetzt richtet es
+        MTA-STS ein (\cmd{https://mta-sts.<domain>}) und holt ggf.\ das Zertifikat.
+  \item \erledigt\textbf{Prüfen:}
+\begin{befehl}
+sudo fv-mail dns       # unten: alle Zeilen "OK" außer MX (kommt später)
+sudo fv-mail status    # alle Dienste "active", Zertifikat von Let's Encrypt
+\end{befehl}
+\end{enumerate}
+
+\subsection{Testen vor der Umstellung}
+
+\begin{enumerate}[resume]
+  \item \erledigt\textbf{Eigenes Postfach anlegen:} in der Verwaltung beim eigenen Konto
+        eine Vereinsadresse eintragen und \emph{Postfach} anhaken. Das Passwort ist das
+        der Webseite (einmal neu anmelden, falls es noch im alten Format gespeichert
+        ist).
+  \item \erledigt\textbf{Mailprogramm einrichten:} Thunderbird findet die Einstellungen
+        selbst (nur Adresse und Passwort eingeben); iPhone/Mac über das Profil unter
+        \emph{Konto} auf der Webseite. Sonst von Hand: IMAP
+        \cmd{mail.<domain>}, Port 993, SSL/TLS; SMTP \cmd{mail.<domain>}, Port 465,
+        SSL/TLS; Benutzername = vollständige Vereinsadresse.
+  \item \erledigt\textbf{Senden testen:} vom neuen Postfach an eine Adresse bei Gmail oder
+        GMX schreiben. Dort \emph{Original anzeigen}: \cmd{SPF: PASS}, \cmd{DKIM: PASS},
+        \cmd{DMARC: PASS}. Zusätzlich eine Mail an die Adresse von
+        \url{https://www.mail-tester.com} schicken; Ziel: 9/10 oder besser.
+  \item \erledigt\textbf{Webseite testen:} in der Verwaltung eine Einladung an sich selbst
+        schicken. Sie muss ankommen (Absender \cmd{webmaster@<domain>}).
+  \item \erledigt\textbf{Empfang intern testen:} vom eigenen Postfach an einen Verteiler
+        schreiben, in dem man selbst steht; Abwesenheitsnotiz auf der Webseite
+        einschalten und von einem anderen Postfach anschreiben.
+\end{enumerate}
+
+\subsection{Umstellung}
+
+\begin{enumerate}[resume]
+  \item\label{mx} \erledigt\textbf{MX umstellen} bei SchlundTech: den bisherigen MX-Eintrag
+        ersetzen durch
+\begin{befehl}
+foerderverein-kf-jf-kreuzau.de.   MX   10 mail.foerderverein-kf-jf-kreuzau.de.
+\end{befehl}
+        Nach etwa der TTL (5~Minuten, siehe Schritt~\ref{ttl}) kommen neue Mails auf
+        dem eigenen Server an. Den alten Anbieter noch einige Tage weiter abrufen; dort
+        können vereinzelt Mails eintreffen, die vor der Umstellung unterwegs waren.
+  \item \erledigt\textbf{Empfang von außen testen:} von Gmail/GMX an die eigene
+        Vereinsadresse schreiben. Wird die erste Mail eines neuen Absenders um einige
+        Minuten verzögert, ist das das Greylisting -- gewollt.
+  \item \erledigt\textbf{Vorhandene Mails übernehmen} (falls es alte Postfächer im
+        Maildir-Format gibt): Verzeichnis auf den Server kopieren und je Postfach
+        einspielen. Vorhandene Mails im neuen Postfach bleiben erhalten.
+\begin{befehl}
+scp -r alt-maildir/ fkjs@foerderverein-kf-jf-kreuzau.de:/tmp/vera
+sudo fv-mail import /tmp/vera vera.vorstand@foerderverein-kf-jf-kreuzau.de
+sudo rm -r /tmp/vera
+\end{befehl}
+  \item \erledigt\textbf{SPF kürzen} auf \cmd{v=spf1 mx -all}, sobald der alte Anbieter
+        nichts mehr für die Domain verschickt.
+  \item \erledigt\textbf{Mitglieder informieren} (Anleitung für Mitglieder): neue
+        Einstellungen der Mailprogramme, Passwort = Passwort der Webseite.
+\end{enumerate}
+
+\subsection{Nach zwei bis vier Wochen}
+
+\begin{enumerate}[resume]
+  \item\label{dmarc} \erledigt\textbf{DMARC-Berichte ansehen}, die an postmaster@ gehen (XML in
+        ZIP-Anhängen; z.\,B.\ mit einem kostenlosen Online-Auswerter lesbar). Stammen
+        alle Mails der Domain vom eigenen Server und bestehen sie SPF und DKIM, DMARC
+        verschärfen:
+\begin{befehl}
+_dmarc.foerderverein-kf-jf-kreuzau.de.  TXT  "v=DMARC1; p=quarantine; rua=mailto:postmaster@foerderverein-kf-jf-kreuzau.de"
+\end{befehl}
+        Nach weiteren Wochen ohne Auffälligkeiten ggf.\ \cmd{p=reject}.
+  \item \erledigt\textbf{MTA-STS scharf schalten:} auf dem Server in
+        \pfad{/etc/fv-mail/mail.env} \cmd{MTA\_STS\_MODE="enforce"} setzen, dann das
+        Skript mit \cmd{-U -M}. Es erneuert Richtlinie und Kennung; den neuen
+        \cmd{\_mta-sts}-Eintrag aus \cmd{sudo fv-mail dns} bei SchlundTech übernehmen.
+  \item \erledigt\textbf{TTL zurück} auf \cmd{3600} für den MX-Eintrag.
+  \item \erledigt\textbf{Reputation prüfen:} \url{https://www.spamhaus.org/lookup/} und
+        \url{https://mxtoolbox.com/blacklists.aspx} für die IP-Adresse des Servers.
+\end{enumerate}
+
+\subsection{Was der Mailserver selbst erledigt}
+
+\begin{itemize}
+  \item Adressen, Aliase, Verteiler, gesperrte Adressen und Plus-Adressen liest er
+        direkt aus der Datenbank -- Änderungen in der Webseite wirken sofort.
+  \item Abwesenheitsnotizen, Rechte auf die Archive, die Belegung der Postfächer und
+        neu benutzte Plus-Adressen gleicht \cmd{fv-mail-sync} alle 5 Minuten ab.
+  \item Postfächer ausgeschiedener Personen: Erinnerung 14 Tage vor der Löschung,
+        Löschung 90 Tage nach der Sperre (\cmd{fv-mail-taeglich}). Die Adresse bleibt
+        danach 12 Monate gesperrt.
+  \item Papierkorb und Spam-Ordner werden nach 90 Tagen geleert. Ab 90\,\% und 95\,\%
+        Belegung bekommt die Person eine Hinweis-Mail; volle Postfächer nehmen nichts
+        mehr an.
+  \item Verschiebt jemand eine Mail in den Spam-Ordner (oder heraus), lernt rspamd
+        daraus.
+\end{itemize}
+
+% ==================================================================
 \section{Was automatisch läuft}
 
 \begin{description}[style=nextline,leftmargin=0pt,itemsep=0.3\baselineskip]
   \item[Sicherheitsupdates von Debian] täglich durch \cmd{unattended-upgrades}, auch für
-    PostgreSQL und Caddy. Der Server startet dabei \textbf{nicht} von selbst neu
-    (siehe Wartungsplan, Abschnitt~\ref{sec:wartung}).
+    PostgreSQL, Caddy und den Mailserver. Der Server startet dabei \textbf{nicht} von
+    selbst neu (siehe Wartungsplan, Abschnitt~\ref{sec:wartung}).
   \item[Datensicherung] täglich gegen 03:30, sonntags mit Prüfung eines Teils der
     gesicherten Daten.
-  \item[Zertifikat] Caddy holt und verlängert das Zertifikat selbst.
+  \item[Zertifikate] Caddy holt und verlängert das Zertifikat der Webseite selbst,
+    \cmd{certbot.timer} das des Mailservers.
+  \item[Mailserver] Abgleich mit der Webseite alle 5 Minuten, Löschfristen täglich
+    (Abschnitt~\ref{sec:mail}).
   \item[Neustart bei Absturz] Die Dienste starten nach einem Fehler automatisch neu.
 \end{description}
 
@@ -251,12 +519,17 @@ ssh fkjs@foerderverein-kf-jf-kreuzau.de sudo fv-web-update
 \end{enumerate}
 
 \cmd{fv-web-update} holt den Stand, baut eine eigene Python-Umgebung, prüft die
-Konfiguration, \textbf{sichert die Datenbank}, migriert sie, sammelt die statischen
-Dateien, schaltet um und prüft, ob die Webseite antwortet (\pfad{/gesund/}).
-Startet die neue Version nicht, wird automatisch die vorige wieder aktiviert.
-Die Webseite ist dabei nur wenige Sekunden nicht erreichbar; in dieser Zeit (und bei
-jedem Ausfall der Anwendung) zeigt Caddy eine Wartungsseite, die sich alle 30~Sekunden
-selbst neu lädt.
+Konfiguration, \textbf{sichert die Datenbank}, migriert sie, vergibt die Leserechte
+für den Mailserver, sammelt die statischen Dateien, schaltet um und prüft, ob die
+Webseite antwortet (\pfad{/gesund/}). Startet die neue Version nicht, wird
+automatisch die vorige wieder aktiviert. Die Webseite ist dabei nur wenige Sekunden
+nicht erreichbar; in dieser Zeit (und bei jedem Ausfall der Anwendung) zeigt Caddy
+eine Wartungsseite, die sich alle 30~Sekunden selbst neu lädt. Der Mailserver läuft
+während des Updates weiter.
+
+Änderungen an der Konfiguration des Mailservers (neue Fassung des
+Einrichtungsskripts) werden mit \cmd{./setup-server-fv-web.sh \dots\ -U -M}
+eingespielt.
 
 \subsection{Weitere Möglichkeiten}
 
@@ -312,10 +585,16 @@ FV\_SECRET\_KEY            & Geheimer Schlüssel; nicht weitergeben. Ändern mel
                              und macht offene Einladungslinks ungültig. \\
 FV\_MAIL                   & \cmd{datei} (Mails nur als Dateien in \pfad{/var/lib/fv-web/mails})
                              oder \cmd{smtp} \\
-FV\_SMTP\_HOST, \_PORT, \_USER, \_PASSWORD & Zugang zum Mailserver \\
+FV\_SMTP\_HOST, \_PORT, \_USER, \_PASSWORD & Zugang zum Mailserver; mit eigenem
+                             Mailserver \cmd{127.0.0.1}, Port 25, ohne Benutzer (setzt \cmd{-M}) \\
 FV\_SMTP\_TLS              & \cmd{starttls} (Port 587), \cmd{ssl} (Port 465) oder \cmd{aus} \\
 FV\_MAIL\_ABSENDER         & Absenderadresse, z.\,B.\ \cmd{webmaster@foerderverein-kf-jf-kreuzau.de};
                              den Namen ergänzt die Webseite \\
+FV\_MAIL\_DOMAIN, FV\_MAIL\_SERVER & Domain der Vereinsadressen und Name des Mailservers
+                             (setzt \cmd{-M}) \\
+FV\_MAIL\_QUOTA\_GB        & Speichergrenze je Postfach in GB (5); nach Änderung \cmd{-U -M} \\
+FV\_MAIL\_LOESCHFRIST\_TAGE, \_VORWARNUNG\_TAGE, \_SPERRFRIST\_TAGE & Löschung gesperrter
+                             Postfächer (90), Erinnerung vorher (14), Sperre der Adresse (365) \\
 FV\_ADMINS                 & Adressen (durch Komma getrennt), die bei Programmfehlern eine
                              Fehlermail mit Details erhalten (nur mit \cmd{smtp}). Die Mails
                              können personenbezogene Daten enthalten: nur die Betreuung eintragen. \\
@@ -336,7 +615,10 @@ FV\_DB\_*, FV\_*\_ROOT, FV\_MAIL\_DATEIEN & setzt das Skript -- nicht ändern \\
 \end{tabularx}
 \end{center}
 
-\subsection{Mailserver eintragen}
+\subsection{Fremden Mailserver eintragen (ohne -M)}
+
+Nur falls die Webseite \emph{ohne} eigenen Mailserver über einen Anbieter verschicken
+soll:
 
 \begin{befehl}
 sudo nano /etc/fv-web/env
@@ -358,7 +640,8 @@ passen.
 Neue Domain im DNS eintragen und das Skript mit der neuen Domain und \cmd{-U} aufrufen.
 Es setzt die domainabhängigen Einstellungen, schreibt Caddy neu und startet die
 Webseite neu. Angemeldete Personen müssen sich neu anmelden; bereits verschickte
-Einladungslinks zeigen noch auf die alte Adresse.
+Einladungslinks zeigen noch auf die alte Adresse. Ein Wechsel der \emph{Mail}-Domain
+betrifft alle Vereinsadressen und ist ein eigenes Vorhaben.
 
 % ==================================================================
 \section{Datensicherung}\label{sec:sicherung}
@@ -368,6 +651,9 @@ Einladungslinks zeigen noch auf die alte Adresse.
 \begin{itemize}
   \item \textbf{Was:} Datenbank (als \cmd{pg\_dump}), alle Anhänge
         (\pfad{/var/lib/fv-web/private}) und die Einstellungen (\pfad{/etc/fv-web}).
+        Mit Mailserver zusätzlich alle Postfächer und Archive (\pfad{/var/vmail}),
+        DKIM-Schlüssel und Einstellungen (\pfad{/etc/fv-mail}) und das Zertifikat
+        (\pfad{/etc/letsencrypt}, wegen des Schlüssels für DANE).
   \item \textbf{Wann:} täglich gegen 03:30 und vor jedem Update; von Hand mit
         \cmd{sudo fv-web-backup}.
   \item \textbf{Wohin:} verschlüsselt mit restic nach \cmd{RESTIC\_REPOSITORY} in
@@ -389,6 +675,7 @@ sudo grep -E '^(RESTIC_PASSWORD|RESTIC_REPOSITORY)=' /etc/fv-web/backup.env
 Liegt das Backup-Ziel auf dem Server selbst (Standard \pfad{/var/backups/fv-web-restic}),
 schützt es nur vor Bedienfehlern, nicht vor dem Ausfall des Servers. Ein externes Ziel,
 z.\,B.\ eine Storage-Box per SFTP, wird mit \cmd{-B} beim Einrichtungsskript gesetzt.
+Mit Mailserver wächst die Sicherung mit den Postfächern; Platz beim Ziel einplanen.
 
 \textbf{Überwachung:} Mit \cmd{BACKUP\_PING\_URL} in \pfad{backup.env} meldet die
 Sicherung Start, Erfolg und Fehler an einen Überwachungsdienst (z.\,B.\
@@ -413,10 +700,21 @@ sudo fv-web-restore -r <stand> -d <datei> & einzelne Dateien unter \pfad{/var/li
 
 \cmd{<stand>} ist die ID aus der Liste oder \cmd{latest}.
 
+\textbf{Einzelnes Postfach zurückholen} (z.\,B.\ versehentlich gelöschte Mails):
+Postfach aus der Sicherung in ein Arbeitsverzeichnis holen und mit \cmd{fv-mail
+import} einspielen. Vorhandene Mails bleiben dabei erhalten.
+
+\begin{befehl}
+sudo bash -c 'set -a; . /etc/fv-web/backup.env; restic -o sftp.args="-i /root/.ssh/fv-web-backup" restore <ID> --host fv-web --include /var/vmail/konten/<nr> --target /root/alt'
+sudo fv-mail import /root/alt/var/vmail/konten/<nr>/Maildir <adresse>
+\end{befehl}
+
 \subsection{Neuer Server nach Totalausfall}
 
 \begin{enumerate}
-  \item Neuen vServer mit Debian 13 bereitstellen, DNS auf die neue Adresse.
+  \item Neuen vServer mit Debian 13 bereitstellen, DNS auf die neue Adresse
+        (Webseite \emph{und} \cmd{mail.<domain>}, \cmd{mta-sts.<domain>}); PTR beim
+        Anbieter neu setzen.
   \item \textbf{Vor} dem Einrichtungsskript das gesicherte Passwort hinterlegen, damit
         das Skript kein neues erzeugt:
 \begin{befehl}
@@ -425,8 +723,8 @@ install -d -m 750 /etc/fv-web
 ( umask 077; echo 'RESTIC_PASSWORD=<aus dem Passwortsafe>' > /etc/fv-web/backup.env )
 \end{befehl}
   \item Einrichtungsskript wie bei der Erstinstallation, mit demselben \cmd{-B}, aber
-        ohne \cmd{-a}/\cmd{-m}. Den neuen öffentlichen Backup-Schlüssel bei der
-        Storage-Box eintragen.
+        ohne \cmd{-a}/\cmd{-m} und noch \textbf{ohne} \cmd{-M}. Den neuen öffentlichen
+        Backup-Schlüssel bei der Storage-Box eintragen.
   \item Sicherungen anzeigen und den letzten Stand \textbf{vor dem Ausfall} einspielen:
 \begin{befehl}
 sudo fv-web-restore -l
@@ -438,15 +736,26 @@ sudo fv-web-restore -r <ID vom letzten Tag vor dem Ausfall> -E
         Stands.
         Danach \cmd{sudo fv-web-update -f}: installiert die aktuelle Version erneut und
         vergibt dabei die Leserechte für den Mailserver wieder.
-  \item Einstellungen wie den Mailserver-Zugang aus der Sicherung holen
-        (\pfad{/etc/fv-web} ist darin enthalten) und von Hand in die neue
+  \item Einstellungen aus der Sicherung holen (\pfad{/etc/fv-web} und
+        \pfad{/etc/fv-mail} sind darin enthalten) und von Hand in die neue
         \pfad{/etc/fv-web/env} übernehmen; danach \cmd{sudo systemctl restart fv-web}.
         Bei einem SFTP-Ziel:
 \begin{befehl}
-sudo bash -c 'set -a; . /etc/fv-web/backup.env; restic -o sftp.args="-i /root/.ssh/fv-web-backup" restore <ID> --host fv-web --include /etc/fv-web --target /root/alt'
+sudo bash -c 'set -a; . /etc/fv-web/backup.env; restic -o sftp.args="-i /root/.ssh/fv-web-backup" restore <ID> --host fv-web --include /etc/fv-web --include /etc/fv-mail --include /etc/letsencrypt --include /var/vmail --target /root/alt'
 sudo cat /root/alt/etc/fv-web/env
 \end{befehl}
-  \item Anmelden und Stichproben prüfen: Seiten, Anhänge, Benutzer.
+  \item \textbf{Mailserver:} \pfad{/etc/fv-mail} (DKIM-Schlüssel, Geheimnisse) und
+        \pfad{/etc/letsencrypt} aus \pfad{/root/alt} an ihren Platz kopieren, dann das
+        Skript mit \cmd{-U -M} aufrufen. So bleiben DKIM- und TLSA-Einträge im DNS
+        gültig. Danach die Postfächer zurücklegen:
+\begin{befehl}
+sudo rsync -a /root/alt/var/vmail/ /var/vmail/
+sudo chown -R vmail:vmail /var/vmail
+sudo doveadm force-resync -A '*'
+sudo fv-mail sync
+\end{befehl}
+  \item Anmelden und Stichproben prüfen: Seiten, Anhänge, Benutzer, ein Postfach im
+        Mailprogramm, \cmd{sudo fv-mail dns}.
 \end{enumerate}
 
 % ==================================================================
@@ -460,6 +769,8 @@ systemctl list-timers fv-web-backup.timer      # letzte und nächste Sicherung
 curl -s https://foerderverein-kf-jf-kreuzau.de/gesund/   # antwortet "ok"
 df -h /                                        # freier Plattenplatz
 sudo fv-web-update --status
+sudo fv-mail status                            # Mailserver
+sudo exim -bp | head                           # Warteschlange (wartende Mails)
 \end{befehl}
 
 \subsection{Protokolle}
@@ -474,9 +785,19 @@ journalctl -u fv-web-backup -e       & Datensicherung \\
 journalctl -u caddy -e               & Zertifikat, Webserver \\
 sudo less /var/log/fv-web-update.log & alle Updates \\
 sudo less /var/log/caddy/fv-web.log  & Zugriffe (JSON) \\
+\midrule
+sudo exigrep <adresse> /var/log/exim4/mainlog & Weg aller Mails von/an eine Adresse \\
+sudo less /var/log/exim4/rejectlog   & abgewiesene Mails mit Grund \\
+journalctl -u dovecot -e             & Anmeldungen, Postfächer, Sieve \\
+journalctl -u rspamd -e              & Spamprüfung \\
+journalctl -u fv-mail-sync -e        & Abgleich mit der Webseite \\
 \bottomrule
 \end{tabularx}
 \end{center}
+
+Die Weboberfläche von rspamd (Statistik, Verlauf) ist nur über einen SSH-Tunnel
+erreichbar: \cmd{ssh -L 11334:127.0.0.1:11334 fkjs@<server>}, dann
+\url{http://localhost:11334}; Passwort: \cmd{sudo grep RSPAMD /etc/fv-mail/mail.env}.
 
 \subsection{Häufige Störungen}
 
@@ -491,17 +812,39 @@ sudo less /var/log/caddy/fv-web.log  & Zugriffe (JSON) \\
   \item[Newsletter-Statusseite: „Der Versanddienst meldet sich nicht“]
     \cmd{systemctl status fv-web-newsletter}; \cmd{sudo systemctl restart fv-web}.
     Der Versand setzt danach an derselben Stelle fort.
-  \item[E-Mails kommen nicht an]
+  \item[E-Mails der Webseite kommen nicht an]
     Steht \cmd{FV\_MAIL=smtp} in \pfad{/etc/fv-web/env}? Fehlermeldungen im Protokoll
     von fv-web bzw.\ im Newsletter-Protokoll der Webseite. Mit \cmd{FV\_MAIL=datei}
-    liegen die Mails in \pfad{/var/lib/fv-web/mails}.
+    liegen die Mails in \pfad{/var/lib/fv-web/mails}. Mit eigenem Mailserver:
+    \cmd{sudo exigrep <empfänger> /var/log/exim4/mainlog}.
+  \item[Mails nach außen bleiben in der Warteschlange]
+    \cmd{sudo exim -bp}; Grund: \cmd{sudo exim -Mvl <id>}. Häufig: Port 25 beim Anbieter
+    gesperrt, oder der Empfänger lehnt wegen fehlendem PTR/SPF ab. Erneut versuchen:
+    \cmd{sudo exim -qff}. Exim versucht es bis zu 4 Tage lang selbst.
+  \item[Mails landen beim Empfänger im Spam]
+    \cmd{sudo fv-mail dns} (alles OK?), PTR prüfen, IP-Adresse bei Spamhaus prüfen,
+    Testmail an mail-tester.com.
+  \item[Eine Mail wurde abgewiesen]
+    \cmd{sudo grep <absender> /var/log/exim4/rejectlog}. Gründe: Spam-Punkte zu hoch,
+    unzulässiger Anhang (z.\,B.\ \cmd{.exe}, Office mit Makros), Absender auf einer
+    Sperrliste, Verteiler nur für Mitglieder, Postfach voll. Greylisting verzögert nur
+    („bitte später erneut versuchen“).
+  \item[Mailprogramm: Anmeldung schlägt fehl]
+    Benutzername ist die vollständige Vereinsadresse, Passwort das der Webseite.
+    Passwort einmal auf der Webseite anmelden bzw.\ neu setzen (altes Speicherformat).
+    Konto aktiv und Postfach angehakt? Nach 10 Fehlversuchen sperrt fail2ban die
+    Adresse für 10 Minuten (bei Wiederholung länger):
+    \cmd{sudo fail2ban-client status dovecot}, entsperren mit
+    \cmd{sudo fail2ban-client set dovecot unbanip <adresse>} (bzw.\ \cmd{exim}).
+  \item[Abwesenheitsnotiz, Archiv oder Belegung aktualisieren sich nicht]
+    \cmd{journalctl -u fv-mail-sync -n 30}; von Hand: \cmd{sudo fv-mail sync}.
   \item[Sicherung fehlgeschlagen]
     \cmd{journalctl -u fv-web-backup -n 30}. Häufig: Backup-Schlüssel nicht bei der
     Storage-Box eingetragen oder Ziel voll. Danach \cmd{sudo fv-web-backup} von Hand.
   \item[Platte voll]
-    \cmd{df -h}, \cmd{sudo du -sh /var/lib/fv-web/* /var/backups/* /var/log/*}.
+    \cmd{df -h}, \cmd{sudo du -sh /var/lib/fv-web/* /var/backups/* /var/log/* /var/vmail/*}.
     Lokale Dumps nach 7 Tagen werden automatisch gelöscht; ein lokales restic-Ziel
-    wächst mit.
+    wächst mit. Die Belegung der Postfächer zeigt die Übersicht \emph{Mail} der Webseite.
   \item[Anmeldung per SSH gesperrt]
     fail2ban sperrt eine Adresse nach 5 Fehlversuchen für eine Stunde. Über die
     Konsole des Anbieters: \cmd{sudo fail2ban-client set sshd unbanip <adresse>}.
@@ -564,6 +907,27 @@ er ergänzt die Anhänge.
 Solange \cmd{FV\_MAIL=datei} gilt, zeigt die Verwaltung beim Einladen den Link an.
 Er muss dann auf anderem Weg an die Person gehen.
 
+\subsection{Mailserver}
+
+Adressen, Postfächer, Aliase, Verteiler und Archive pflegt der Vorstand in der
+Webseite (Vorstandsanleitung). Für die Betreuung bleiben:
+
+\begin{center}
+\small
+\begin{tabularx}{\textwidth}{@{}>{\ttfamily\raggedright}p{70mm}X@{}}
+\toprule
+sudo fv-mail import <maildir> <adresse> & vorhandene Mails in ein Postfach übernehmen \\
+sudo fv-mail sync                       & Abgleich sofort statt nach 5 Minuten \\
+sudo exim -Mrm <id>                     & eine Mail aus der Warteschlange löschen \\
+sudo doveadm quota get -u <adresse>     & Belegung eines Postfachs \\
+sudo doveadm kick <adresse>             & alle Verbindungen einer Person trennen \\
+\bottomrule
+\end{tabularx}
+\end{center}
+
+Ein Postfach wird \emph{nicht} von Hand gelöscht: Konto in der Webseite deaktivieren
+bzw.\ Postfach abhaken; Erinnerung und Löschung laufen dann nach den Fristen.
+
 % ==================================================================
 \section{Wartungsplan}\label{sec:wartung}
 
@@ -574,31 +938,25 @@ Er muss dann auf anderem Weg an die Person gehen.
 \textbf{Wann} & \textbf{Was} \\
 \midrule
 monatlich     & Neustart, damit Kernel- und Bibliotheksupdates wirksam werden:
-                \cmd{sudo reboot} (Webseite etwa eine Minute weg), danach
-                \cmd{systemctl status fv-web} und Webseite prüfen. \\
+                \cmd{sudo reboot} (Webseite und Mail etwa eine Minute weg; Mails von
+                außen werden vom Absender später erneut zugestellt), danach
+                \cmd{systemctl status fv-web} und \cmd{sudo fv-mail status}. \\
               & Sicherung prüfen: \cmd{systemctl list-timers fv-web-backup.timer},
                 \cmd{journalctl -u fv-web-backup -n 5}. \\
               & Sicherheitsmeldungen zu Django und den Paketen prüfen
                 (\url{https://www.djangoproject.com/weblog/}); ggf.\ Update
                 (Abschnitt~\ref{sec:update}). \\
+              & Mail: Warteschlange leer (\cmd{sudo exim -bpc})? DMARC-Berichte an
+                postmaster@ überfliegen. \\
 vierteljährlich & Wiederherstellungstest: \cmd{sudo fv-web-restore -t}. \\
               & Benutzerkonten mit dem Vorstand durchsehen: Ausgeschiedene deaktiviert? \\
+              & \cmd{sudo fv-mail dns}: alle Einträge OK? IP-Adresse auf Sperrlisten? \\
 jährlich      & Zugänge im Passwortsafe prüfen (Backup-Passwort, Storage-Box, GitHub,
-                SSH-Schlüssel der Betreuung). \\
-              & Plattenplatz und Größe der Sicherung prüfen. \\
+                SSH-Schlüssel der Betreuung, SchlundTech, Kundenmenü des Servers). \\
+              & Plattenplatz und Größe der Sicherung prüfen (Postfächer wachsen). \\
 Frühjahr 2027 & Umstieg auf Django 6.2 LTS. \\
 \bottomrule
 \end{tabularx}
 \end{center}
-
-% ==================================================================
-\section{Ausblick: Mailserver}
-
-Geplant ist ein eigener Mailserver (Exim, Dovecot) auf demselben Server. Postfächer
-gibt es nur für Personen mit Vereinsadresse; das Passwort ist dasselbe wie für die
-Webseite. Dovecot liest dazu über die Datenbankrolle \cmd{dovecot} nur die Sicht
-\cmd{dovecot\_benutzer}. Die Rolle legt das Einrichtungsskript an, das Leserecht
-vergibt \cmd{fv-web-update}. Die Konfiguration des Mailservers folgt in einer
-späteren Fassung dieses Handbuchs.
 
 \end{document}

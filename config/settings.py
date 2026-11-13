@@ -266,7 +266,7 @@ FV_MAIL_ANLEITUNG_URL = env("FV_MAIL_ANLEITUNG_URL", "")              # Link zur
 
 # Quellcode der laufenden Fassung (AGPL § 13): Link in der Fußzeile.
 # Bei eigenen Änderungen auf die eigene, veröffentlichte Fassung zeigen lassen.
-FV_QUELLCODE_URL = env("FV_QUELLCODE_URL", "https://github.com/brami/FKJF")
+FV_QUELLCODE_URL = env("FV_QUELLCODE_URL", "https://github.com/brami/FreiVerein")
 
 # Überwachung (/health): Statusdatei, die fv-web-status auf dem Server schreibt
 # (leer: nur Datenbank und Newsletter-Dienst prüfen, z. B. bei der Entwicklung)

@@ -221,7 +221,7 @@ BACKUP_REPO="sftp://u12345@u12345.your-storagebox.de:23/fv-web"
 \end{befehl}
 
 \begin{itemize}
-  \item Gespeichert werden \cmd{-H -d -W -M -X -P -e -B -R -u -n -t -p -S}. Einmalige
+  \item Gespeichert werden \cmd{-H -d -A -W -M -X -P -e -B -R -u -n -t -p -S}. Einmalige
         Optionen (\cmd{-c -U -N -L -r -a -m -y}) nicht.
   \item Etwas abschalten (z.\,B.\ www): in der Datei auf \cmd{0} setzen.
   \item Die Datei enthält keine Passwörter. Sie gehört zu den Unterlagen der Betreuung
@@ -497,6 +497,42 @@ _dmarc.foerderverein-kf-jf-kreuzau.de.  TXT  "v=DMARC1; p=quarantine; rua=mailto
   \item \erledigt\textbf{Reputation prüfen:} \url{https://www.spamhaus.org/lookup/} und
         \url{https://mxtoolbox.com/blacklists.aspx} für die IP-Adresse des Servers.
 \end{enumerate}
+
+\subsection{Weitere Domains (z.\,B.\ mit Umlaut oder Kurzform)}\label{sec:zusatzdomains}
+
+Neben der Hauptdomain kann der Verein weitere Domains besitzen, z.\,B.\
+\cmd{förderverein-kf-jf-kreuzau.de} oder eine Kurzform wie \cmd{fv-kf-jf-kreuzau.de}.
+Jede weitere Domain
+\begin{itemize}
+  \item leitet die Webseite auf die Hauptdomain um (mit \cmd{-W} auch \cmd{www.}),
+  \item nimmt Mails an \emph{alle} Adressen an, die es unter der Hauptdomain gibt:
+        \cmd{vera@fv-kf-jf-kreuzau.de} landet im selben Postfach wie
+        \cmd{vera@foerderverein-kf-jf-kreuzau.de}; ebenso Aliase, Verteiler, Sperren und
+        Plus-Adressen,
+  \item verschickt \emph{nie} selbst: Absender ist immer die Hauptdomain.
+\end{itemize}
+
+Domains mit Umlaut schreibt das Skript selbst in die technische Form (Punycode) um,
+z.\,B.\ \cmd{xn--frderverein-kf-jf-kreuzau-…de}; so steht sie auch in der
+Einstellungsdatei und wird so bei SchlundTech angezeigt.
+
+\begin{enumerate}
+  \item \erledigt Domain bei SchlundTech registrieren bzw.\ auf den Verein übertragen.
+  \item \erledigt In ihrer Zone den A-Eintrag (und mit \cmd{-W} \cmd{www}) auf den Server
+        setzen.
+  \item \erledigt Skript mit der Domain aufrufen (mehrere \cmd{-A} möglich, werden in der
+        Einstellungsdatei ergänzt):
+\begin{befehl}
+./setup-server-fv-web.sh -f kreuzau.env -U -A förderverein-kf-jf-kreuzau.de -A fv-kf-jf-kreuzau.de
+\end{befehl}
+  \item \erledigt \cmd{sudo fv-mail dns} zeigt je weiterer Domain die Mail-Einträge:
+        \cmd{MX} auf \cmd{mail.<hauptdomain>}, \cmd{SPF "v=spf1 -all"} und
+        \cmd{DMARC "p=reject"} -- die beiden letzten verhindern, dass jemand mit dieser
+        Domain Mails fälscht. Eintragen und mit \cmd{sudo fv-mail dns} prüfen.
+\end{enumerate}
+
+Entfernen: Domain in der Einstellungsdatei aus \cmd{ZUSATZ\_DOMAINS} löschen und das
+Skript mit \cmd{-f kreuzau.env -U} aufrufen; danach die DNS-Einträge löschen.
 
 \subsection{Was der Mailserver selbst erledigt}
 

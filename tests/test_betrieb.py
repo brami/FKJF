@@ -18,6 +18,75 @@ def test_gesund(client):
     assert r.status_code == 200 and r.content == b"ok"
 
 
+# ------------------------------------------------------------ /health, /health/live
+
+def test_health_live(client):
+    for pfad in ("/health/live", "/health/live/"):
+        r = client.get(pfad)
+        assert r.status_code == 200 and r.json() == {"status": "ok"}
+        assert r["Cache-Control"] == "no-store"
+
+
+@pytest.fixture
+def newsletter_dienst_laeuft():
+    from seiten import newsletter
+    newsletter.herzschlag()
+    yield
+    from django.core.cache import cache
+    cache.delete(newsletter.HERZSCHLAG)
+
+
+def test_health_ok_ohne_statusdatei(client, settings, newsletter_dienst_laeuft):
+    settings.FV_STATUS_DATEI = ""
+    for pfad in ("/health", "/health/"):
+        r = client.get(pfad)
+        assert r.status_code == 200 and r.json() == {"status": "ok"}
+        assert r["Cache-Control"] == "no-store"
+
+
+def test_health_newsletter_dienst_fehlt(client, settings):
+    settings.FV_STATUS_DATEI = ""
+    r = client.get("/health")
+    assert r.status_code == 503
+    assert r.json() == {"status": "warning", "probleme": ["Newsletter-Versand meldet sich nicht"]}
+
+
+def test_health_mit_statusdatei(client, settings, tmp_path, newsletter_dienst_laeuft):
+    import json
+    import time
+    datei = tmp_path / "status.json"
+    settings.FV_STATUS_DATEI = str(datei)
+    # fehlt: Prüfung läuft nicht
+    r = client.get("/health")
+    assert r.status_code == 503 and "fv-web-status" in r.json()["probleme"][0]
+    # aktuell, nur Hinweis: ok
+    datei.write_text(json.dumps({"zeit": time.time(), "probleme": [], "hinweise": ["Neustart nötig"]}))
+    r = client.get("/health")
+    assert r.status_code == 200 and r.json() == {"status": "ok", "hinweise": ["Neustart nötig"]}
+    # Probleme vom Server werden übernommen (auch mit Umlauten)
+    datei.write_text(json.dumps({"zeit": time.time(), "probleme": ["Dienst Mailserver (Exim) läuft nicht"],
+                                 "hinweise": []}), encoding="utf-8")
+    r = client.get("/health")
+    assert r.status_code == 503
+    assert r.json()["probleme"] == ["Dienst Mailserver (Exim) läuft nicht"]
+    assert "läuft".encode() in r.content          # nicht als \u00e4 kodiert
+    # veraltet
+    datei.write_text(json.dumps({"zeit": time.time() - 3600, "probleme": [], "hinweise": []}))
+    r = client.get("/health")
+    assert r.status_code == 503 and "fv-web-status" in r.json()["probleme"][0]
+
+
+def test_health_ohne_anmeldung_auch_bei_zwei_faktor_pflicht(client, settings, newsletter_dienst_laeuft):
+    """Angemeldeter Vorstand ohne Zwei-Faktor wird nicht zur Einrichtung umgeleitet."""
+    from seiten.models import Stufe
+    settings.FV_STATUS_DATEI = ""
+    u = User.objects.create_user("v", "v@example.org", "geheim-geheim-123")
+    u.groups.add(Stufe.objects.filter(darf_bearbeiten=True).first().gruppe)
+    client.force_login(u)
+    assert client.get("/health").status_code == 200
+    assert client.get("/health/live").status_code == 200
+
+
 def test_vorstand_anlegen_und_passwort_setzen(client):
     out = StringIO()
     call_command("vorstand_anlegen", "vera.vorstand", "vera@example.org",

@@ -60,6 +60,7 @@ sudo fv-web-backup            & Datensicherung sofort ausführen \\
 sudo fv-web-restore -t        & Wiederherstellungstest (ändert nichts) \\
 sudo fv-manage <befehl>       & Befehle der Anwendung (siehe Abschnitt~\ref{sec:verwaltung}) \\
 systemctl status fv-web       & läuft die Webseite? \\
+sudo fv-web-status            & Gesamtzustand (wie \cmd{/health}) \\
 journalctl -u fv-web -e       & Protokoll der Webseite \\
 sudo fv-mail status           & Mailserver: Dienste, Warteschlange, Zertifikat \\
 sudo fv-mail dns              & Mailserver: DNS-Einträge anzeigen und prüfen \\
@@ -124,6 +125,7 @@ fv-web-newsletter.service & verschickt Newsletter; startet, stoppt und startet n
 caddy.service             & HTTPS, Zertifikat von Let's Encrypt (automatisch), statische Dateien \\
 postgresql.service        & Datenbank \\
 fv-web-backup.timer       & tägliche Sicherung gegen 03:30 \\
+fv-web-status.timer       & alle 5 Minuten: Zustand für \cmd{/health} prüfen \\
 unattended-upgrades       & automatische Sicherheitsupdates von Debian \\
 fail2ban, ufw             & Schutz gegen falsche Passwörter (SSH, Mail), Firewall \\
 \midrule
@@ -835,12 +837,58 @@ sudo fv-mail sync
 % ==================================================================
 \section{Überwachung und Störungen}\label{sec:stoerungen}
 
+\subsection{Überwachung von außen: /health und /health/live}\label{sec:health}
+
+Zwei Adressen für einen Überwachungsdienst (z.\,B.\ Uptime Kuma, UptimeRobot,
+healthchecks.io), ohne Anmeldung, nie zwischengespeichert -- wie beim Wehrkalender:
+
+\begin{center}
+\small
+\begin{tabularx}{\textwidth}{@{}>{\ttfamily\raggedright}p{42mm}X@{}}
+\toprule
+/health/live & \textbf{Lebenszeichen}: Die Anwendung antwortet. Immer
+               \cmd{200 \{"status":"ok"\}}, solange die Webseite läuft; keine
+               weiteren Prüfungen. \\
+/health      & \textbf{Gesamtzustand}: \cmd{200 \{"status":"ok"\}} oder
+               \cmd{503 \{"status":"warning", "probleme":[\dots]\}} mit der Liste der
+               Probleme. \cmd{"hinweise"} (z.\,B.\ \emph{Neustart nötig}) ändern den
+               Status nicht. \\
+\bottomrule
+\end{tabularx}
+\end{center}
+
+\cmd{/health} meldet ein Problem, wenn
+\begin{itemize}
+  \item die Datenbank nicht antwortet oder der Newsletter-Dienst sich nicht meldet,
+  \item ein Dienst nicht läuft (PostgreSQL, Caddy, Webseite, Newsletter; mit
+        Mailserver auch Exim, Dovecot, rspamd, Redis, unbound),
+  \item die letzte erfolgreiche Datensicherung älter als 26 Stunden ist oder die
+        letzte fehlgeschlagen ist,
+  \item ein Dateisystem zu 90\,\% oder mehr belegt ist,
+  \item ein Zertifikat (Webseite, Mailserver) in weniger als 14 Tagen abläuft oder
+        der Mailserver nur ein vorläufiges Zertifikat hat,
+  \item mehr als 20 Mails länger als eine Stunde in der Warteschlange warten oder
+        der Abgleich bzw.\ die täglichen Aufgaben des Mailservers fehlschlagen,
+  \item die Serverprüfung selbst seit mehr als 15 Minuten keine Werte geliefert hat.
+\end{itemize}
+
+Die Dienste, Sicherung, Platz und Mailserver prüft \cmd{fv-web-status} als root alle
+5~Minuten (\cmd{fv-web-status.timer}) und legt das Ergebnis in
+\pfad{/var/lib/fv-web-status/status.json} ab; die Webseite liest es nur. Von Hand:
+\cmd{sudo fv-web-status} zeigt das Ergebnis sofort an.
+
+\textbf{Empfehlung für den Überwachungsdienst:} \cmd{/health/live} jede Minute
+(Webseite erreichbar?), \cmd{/health} alle 5--10 Minuten mit Benachrichtigung erst
+nach zwei aufeinanderfolgenden Fehlern. Die Probleme sind öffentlich lesbar; sie
+nennen nur allgemeine Zustände, keine Namen oder Adressen.
+
 \subsection{Zustand prüfen}
 
 \begin{befehl}
+sudo fv-web-status                             # Gesamtzustand wie /health
 systemctl status fv-web fv-web-newsletter caddy postgresql
 systemctl list-timers fv-web-backup.timer      # letzte und nächste Sicherung
-curl -s https://foerderverein-kf-jf-kreuzau.de/gesund/   # antwortet "ok"
+curl -s https://foerderverein-kf-jf-kreuzau.de/health   # {"status":"ok"} oder Probleme
 df -h /                                        # freier Plattenplatz
 sudo fv-web-update --status
 sudo fv-mail status                            # Mailserver

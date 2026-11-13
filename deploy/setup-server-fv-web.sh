@@ -841,6 +841,7 @@ for d in /var/vmail /etc/fv-mail /etc/letsencrypt; do [[ -d "$d" && -e /etc/fv-m
 log "Gesichert in $RESTIC_REPOSITORY ($("${R[@]}" snapshots --host fv-web --json | jq length) Stände)"
 [[ "$RESTIC_REPOSITORY" == /* ]] && log "HINWEIS: Ziel liegt auf diesem Server – schützt nicht bei Ausfall des Servers."
 ping_url ""
+install -d -m 755 /var/lib/fv-web-status && date +%s > /var/lib/fv-web-status/sicherung   # für /health
 log "Sicherung erfolgreich."
 BACKUP
 
@@ -1414,6 +1415,123 @@ UPDATE
   chmod 750 /usr/local/sbin/fv-web-update
   log "fv-web-update installiert: sudo fv-web-update [<ref>|--status|--zurueck|--pruefen]"
   /usr/local/sbin/fv-web-update --caddy
+
+  step "Überwachung (fv-web-status für /health)"
+  install -d -m 755 /var/lib/fv-web-status
+  set_kv "$ENVF" FV_STATUS_DATEI "/var/lib/fv-web-status/status.json"
+  cat > /usr/local/sbin/fv-web-status <<'STATUS'
+#!/usr/bin/env bash
+# =============================================================================
+#  fv-web-status – Zustand des Servers für https://<domain>/health
+#  (angelegt von setup-server-fv-web.sh; läuft alle 5 Minuten, fv-web-status.timer)
+#
+#  Schreibt /var/lib/fv-web-status/status.json: {"zeit", "probleme", "hinweise"}.
+#  Die Webseite ergänzt Datenbank und Newsletter-Dienst und antwortet mit 200 oder 503.
+#  sudo fv-web-status       prüfen und Ergebnis anzeigen
+# =============================================================================
+set -uo pipefail
+DIR=/var/lib/fv-web-status
+install -d -m 755 "$DIR"
+DOMAIN="$(grep -m1 '^DOMAIN=' /etc/fv-web/deploy.env 2>/dev/null | cut -d= -f2- | tr -d '"')"
+jetzt="$(date +%s)"
+probleme=(); hinweise=()
+problem() { probleme+=("$1"); }
+hinweis() { hinweise+=("$1"); }
+dienst() { systemctl is-active --quiet "$1" || problem "Dienst $2 läuft nicht"; }
+laeuft_ab() {  # laeuft_ab <zertifikat> <name>
+  [[ -r "$1" ]] || { problem "Zertifikat $2 fehlt"; return; }
+  openssl x509 -checkend $((14 * 86400)) -noout -in "$1" >/dev/null 2>&1 \
+    || problem "Zertifikat $2 läuft in weniger als 14 Tagen ab"
+}
+
+# --- Webseite
+dienst postgresql "Datenbank (PostgreSQL)"
+dienst caddy "Webserver (Caddy)"
+if [[ -e /srv/fv-web/current/manage.py ]]; then
+  dienst fv-web "Webseite"
+  dienst fv-web-newsletter "Newsletter-Versand"
+fi
+if [[ -n "$DOMAIN" ]]; then
+  zert="$(find /var/lib/caddy -name "$DOMAIN.crt" -path '*certificates*' 2>/dev/null | head -n1)"
+  if [[ -n "$zert" ]]; then laeuft_ab "$zert" "der Webseite"
+  else hinweis "Zertifikat der Webseite noch nicht vorhanden"; fi
+fi
+
+# --- Datensicherung: letzte erfolgreiche (Marke von fv-web-backup, sonst neuester Dump)
+if [[ -f "$DIR/sicherung" ]]; then t="$(cat "$DIR/sicherung")"
+else t="$(stat -c %Y "$(ls -1t /var/backups/fv-web/*.dump 2>/dev/null | head -n1)" 2>/dev/null || echo 0)"; fi
+[[ "$t" =~ ^[0-9]+$ ]] || t=0
+if (( t == 0 )); then problem "Noch keine erfolgreiche Datensicherung"
+elif (( jetzt - t > 26 * 3600 )); then problem "Letzte erfolgreiche Datensicherung vor $(( (jetzt - t) / 3600 )) Stunden"; fi
+systemctl is-failed --quiet fv-web-backup.service && problem "Letzte Datensicherung fehlgeschlagen"
+grep -q '^RESTIC_REPOSITORY="\{0,1\}/' /etc/fv-web/backup.env 2>/dev/null \
+  && hinweis "Datensicherung liegt nur auf diesem Server"
+
+# --- Speicherplatz (ab 90 % belegt)
+while read -r belegt ziel; do
+  belegt="${belegt%\%}"
+  [[ "$belegt" =~ ^[0-9]+$ ]] && (( belegt >= 90 )) && problem "Speicherplatz $ziel zu $belegt % belegt"
+done < <(df --output=pcent,target -x tmpfs -x devtmpfs -x overlay -x squashfs 2>/dev/null | tail -n +2)
+
+# --- System
+[[ -f /run/reboot-required ]] && hinweis "Neustart nötig (Updates)"
+
+# --- Mailserver (nur wenn eingerichtet)
+if [[ -f /etc/fv-mail/mail.env ]]; then
+  dienst exim4 "Mailserver (Exim)"
+  dienst dovecot "Postfächer (Dovecot)"
+  dienst rspamd "Spamfilter (rspamd)"
+  dienst redis-server "Redis"
+  dienst unbound "DNS-Resolver (unbound)"
+  laeuft_ab /etc/fv-mail/tls/fullchain.pem "des Mailservers"
+  if [[ -r /etc/fv-mail/tls/fullchain.pem ]] && [[ "$(openssl x509 -in /etc/fv-mail/tls/fullchain.pem -noout -subject -nameopt compat)" == \
+       "$(openssl x509 -in /etc/fv-mail/tls/fullchain.pem -noout -issuer -nameopt compat | sed 's/^issuer=/subject=/')" ]]; then
+    problem "Mailserver hat nur ein vorläufiges (selbst signiertes) Zertifikat"
+  fi
+  alt="$(exiqgrep -o 3600 -c 2>/dev/null | awk '{print $1}')"
+  [[ "$alt" =~ ^[0-9]+$ ]] && (( alt > 20 )) && problem "$alt Mails warten länger als eine Stunde in der Warteschlange"
+  eingefroren="$(exiqgrep -z -c 2>/dev/null | awk '{print $1}')"
+  [[ "$eingefroren" =~ ^[0-9]+$ ]] && (( eingefroren > 0 )) && hinweis "$eingefroren eingefrorene Mail(s) in der Warteschlange"
+  systemctl is-failed --quiet fv-mail-sync.service && problem "Abgleich Mailserver – Webseite fehlgeschlagen"
+  systemctl is-failed --quiet fv-mail-taeglich.service && problem "Tägliche Aufgaben des Mailservers fehlgeschlagen"
+fi
+
+liste() { if (( $# )); then printf '%s\n' "$@" | jq -R . | jq -s -c .; else echo '[]'; fi; }
+tmp="$(mktemp "$DIR/.status.XXXXXX")"
+jq -n --argjson zeit "$jetzt" --argjson p "$(liste "${probleme[@]}")" --argjson h "$(liste "${hinweise[@]}")" \
+  '{zeit: $zeit, probleme: $p, hinweise: $h}' > "$tmp"
+chmod 644 "$tmp"; mv "$tmp" "$DIR/status.json"
+if [[ -t 1 ]]; then
+  if (( ${#probleme[@]} )); then printf 'Problem:  %s\n' "${probleme[@]}"; else echo "Keine Probleme."; fi
+  (( ${#hinweise[@]} )) && printf 'Hinweis:  %s\n' "${hinweise[@]}"
+fi
+exit 0
+STATUS
+  chmod 755 /usr/local/sbin/fv-web-status
+  cat > /etc/systemd/system/fv-web-status.service <<'EOF'
+[Unit]
+Description=Zustand des Servers für /health prüfen
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/fv-web-status
+Nice=10
+EOF
+  cat > /etc/systemd/system/fv-web-status.timer <<'EOF'
+[Unit]
+Description=Zustand des Servers alle 5 Minuten prüfen
+
+[Timer]
+OnBootSec=1min
+OnUnitActiveSec=5min
+
+[Install]
+WantedBy=timers.target
+EOF
+  systemctl daemon-reload
+  systemctl enable --now fv-web-status.timer >/dev/null
+  /usr/local/sbin/fv-web-status >/dev/null
+  log "Überwachung: https://$DOMAIN/health (Gesamtzustand) und /health/live (Lebenszeichen)"
 
   if [[ "$NO_APP" != 1 && "$LOCAL_UPLOAD" != 1 ]]; then
     step "Zugriff auf das Repository"
@@ -2744,6 +2862,8 @@ phase_summary() {
   . /etc/os-release
   log "System:       $PRETTY_NAME, Kernel $(uname -r), Hostname $(hostnamectl --static)"
   log "Admin:        $ADMIN_USER | Firewall: $(ufw status | head -n1) | fail2ban: $(systemctl is-active fail2ban)"
+  /usr/local/sbin/fv-web-status >/dev/null 2>&1 || true
+  log "Zustand:      $(curl -s --max-time 10 -H "Host: $DOMAIN" -H 'X-Forwarded-Proto: https' http://localhost/health 2>/dev/null || echo 'nicht erreichbar') (https://$DOMAIN/health)"
   log "Dienste:      fv-web $(systemctl is-active fv-web 2>/dev/null || true) | newsletter $(systemctl is-active fv-web-newsletter 2>/dev/null || true) | caddy $(systemctl is-active caddy) | postgresql $(systemctl is-active postgresql)"
   if app_installed; then
     log "Anwendung:    $(grep '^Stand' "$BASE/current/.release" | cut -d: -f2- | xargs)"

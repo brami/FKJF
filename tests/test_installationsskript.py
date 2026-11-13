@@ -304,3 +304,20 @@ def test_vorhandenes_www_bleibt_erhalten():
     """Ohne -W wird ein auf dem Server eingerichtetes www nicht stillschweigend entfernt."""
     assert "grep -q '^WITH_WWW=\"1\"' /etc/fv-web/deploy.env" in TEXT
     assert "bleibt erhalten (wie -W)" in TEXT
+
+
+# ------------------------------------------------------------ Überwachung (/health)
+
+def test_fv_web_status_eingerichtet(tmp_path):
+    werkzeug = zwischen(REMOTE, "phase_tool() {\n", "# --------------------------------------------------------------- Phase app")
+    assert 'set_kv "$ENVF" FV_STATUS_DATEI "/var/lib/fv-web-status/status.json"' in werkzeug
+    assert "fv-web-status.timer" in werkzeug and "OnUnitActiveSec=5min" in werkzeug
+    assert "/var/lib/fv-web-status/sicherung" in BACKUP       # Marke der letzten Sicherung
+    datei = tmp_path / "fv-web-status"
+    datei.write_text(_heredoc(REMOTE, "STATUS"))
+    r = subprocess.run(["bash", "-n", str(datei)], capture_output=True, text=True)
+    assert r.returncode == 0, r.stderr
+    if subprocess.run(["which", "shellcheck"], capture_output=True).returncode == 0:
+        r = subprocess.run(["shellcheck", "-S", "warning", "-s", "bash", str(datei)],
+                           capture_output=True, text=True)
+        assert r.returncode == 0, r.stdout

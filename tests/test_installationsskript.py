@@ -89,6 +89,7 @@ def test_caddyfile_gueltig_und_mit_wartungsseite(tmp_path, modus, mail):
 set -euo pipefail
 DATA={tmp_path}/data; DOMAIN=foerderverein.example; WITH_WWW=1; ACME_EMAIL=a@example.org
 MAIL_HOST={"mail.foerderverein.example" if mail else '""'}; MAIL_WEB={"mta-sts.foerderverein.example" if mail else '""'}
+ZUSATZ_DOMAINS={'"xn--frderverein-yrc.example kurz.example"' if mail else '""'}
 log() {{ echo "$*"; }}
 systemctl() {{ :; }}
 {funktionen_text}
@@ -111,6 +112,9 @@ write_caddyfile {modus}
         assert "/var/lib/fv-mail/acme" in caddyfile
         assert "mta-sts.foerderverein.example {" in caddyfile
         assert ("/.well-known/autoconfig/*" in caddyfile) == (modus == "app")
+        # weitere Domains (mit und ohne www) leiten auf die Hauptdomain um
+        assert "xn--frderverein-yrc.example, www.xn--frderverein-yrc.example {" in caddyfile
+        assert "kurz.example, www.kurz.example {" in caddyfile
     else:
         assert "fv-mail" not in caddyfile
 
@@ -152,7 +156,7 @@ def test_mail_konfigurationen_ohne_platzhalterreste():
     for marke in ("EXIM", "DOVECOT", "FILTER"):
         text = _heredoc(MAIL, marke)
         assert set(re.findall(r"@[A-Z_]+@", text)) <= {"@DOMAIN@", "@HOST@", "@VMAIL_UID@",
-                                                         "@QUOTA@", "@LISTEN@"}, marke
+                                                         "@QUOTA@", "@LISTEN@", "@ZUSATZ@"}, marke
     dovecot = _heredoc(MAIL, "DOVECOT")
     assert "dovecot_config_version = 2.4" in dovecot
     assert "passwort IS NOT NULL" in dovecot          # Postfach ohne Passwort: Zustellung ja, Anmeldung nein
@@ -173,10 +177,11 @@ def test_fv_mail_werkzeug_shellcheck(tmp_path):
 EXIM_DA = subprocess.run(["which", "exim"], capture_output=True).returncode == 0
 
 
-def _exim_konfig(tmp_path):
+def _exim_konfig(tmp_path, zusatz=""):
     makros = tmp_path / "fv-makros.conf"
     makros.write_text("FV_DOMAIN = verein.example\nFV_HOST = mail.verein.example\n"
-                      "FV_DKIM_SELEKTOR = fv2026\nFV_SRS_GEHEIMNIS = geheim\n")
+                      "FV_DKIM_SELEKTOR = fv2026\nFV_SRS_GEHEIMNIS = geheim\n"
+                      f"FV_ZUSATZ = {zusatz}\n")
     konfig = tmp_path / "exim4.conf"
     konfig.write_text(_heredoc(MAIL, "EXIM").replace("/etc/exim4/fv-makros.conf", str(makros)))
     return konfig
@@ -195,9 +200,11 @@ def test_exim_konfiguration_gueltig(tmp_path):
 
 
 @pytest.mark.skipif(not EXIM_DA, reason="exim nicht installiert")
-def test_exim_relay_und_anmeldung(tmp_path):
-    """Ohne Datenbank prüfbar: kein offenes Relay; Mailprogramm-Ports nur mit Anmeldung."""
-    konfig = _exim_konfig(tmp_path)
+@pytest.mark.parametrize("zusatz", ["", "kurz.example : xn--frderverein-yrc.example"])
+def test_exim_relay_und_anmeldung(tmp_path, zusatz):
+    """Ohne Datenbank prüfbar: kein offenes Relay; Mailprogramm-Ports nur mit Anmeldung;
+    weitere Domains (-A) gelten als eigene, Archiv bleibt auch dort gesperrt."""
+    konfig = _exim_konfig(tmp_path, zusatz)
 
     def sitzung(port, ziel):
         r = subprocess.run(["exim", "-C", str(konfig), "-bh", "192.0.2.10", "-oMi", f"192.0.2.1.{port}"],
@@ -208,6 +215,11 @@ def test_exim_relay_und_anmeldung(tmp_path):
     assert "550 Weiterleitung nicht erlaubt" in sitzung(25, "a@anders.example")
     assert "550 Bitte zuerst anmelden" in sitzung(587, "a@anders.example")
     assert "550 Unbekannte Adresse" in sitzung(25, "fv-archiv+vorstand@verein.example")
+    if zusatz:
+        assert "550 Weiterleitung nicht erlaubt" not in sitzung(25, "vera@kurz.example")
+        assert "550 Unbekannte Adresse" in sitzung(25, "fv-archiv+vorstand@kurz.example")
+    else:
+        assert "550 Weiterleitung nicht erlaubt" in sitzung(25, "vera@kurz.example")
 
 
 @pytest.mark.skipif(subprocess.run(["which", "rspamadm"], capture_output=True).returncode != 0,
@@ -239,6 +251,9 @@ def _werte(datei):
     return dict(re.findall(r'^([A-Z_]+)="(.*)"$', datei.read_text(), re.M))
 
 
+PUNY = "förderverein.example".encode("idna").decode()   # xn--frderverein-rfb.example
+
+
 def test_einstellungsdatei_merkt_sich_optionen(tmp_path):
     datei = tmp_path / "kreuzau.env"
     _aufruf(tmp_path, "-f", str(datei), "-H", "203.0.113.10", "-d", "verein.example",
@@ -248,6 +263,15 @@ def test_einstellungsdatei_merkt_sich_optionen(tmp_path):
     assert w["WITH_WWW"] == "1" and w["WITH_MAIL"] == "1"
     assert w["POSTMASTER"] == "betreuung@example.org" and w["BACKUP_REPO"] == "sftp://u@h:23/fv"
     assert w["MAIL_HOST"] == ""                     # Standard mail.<domain> wird nicht festgeschrieben
+    # weitere Domains: mehrfach, Umlaut als Punycode, ohne Doppelte, kommen dazu
+    r = _aufruf(tmp_path, "-f", str(datei), "-A", "Förderverein.example", "-A", "kurz.example",
+                "-A", "kurz.example")
+    assert _werte(datei)["ZUSATZ_DOMAINS"] == f"{PUNY} kurz.example"
+    _aufruf(tmp_path, "-f", str(datei), "-A", "noch.example")
+    assert _werte(datei)["ZUSATZ_DOMAINS"] == f"{PUNY} kurz.example noch.example"
+    r = _aufruf(tmp_path, "-f", str(datei), "-A", "verein.example")
+    assert r.returncode == 2 and "gleich der Domain" in r.stderr
+    datei.write_text(datei.read_text().replace(" noch.example", ""))
     # später nur -U: nichts geht verloren, Datei bleibt gleich
     vorher = datei.read_text()
     r = _aufruf(tmp_path, "-f", str(datei), "-U")

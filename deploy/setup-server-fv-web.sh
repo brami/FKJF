@@ -101,6 +101,7 @@ NO_APP=0
 APP_ADMIN=""
 APP_ADMIN_MAIL=""
 WITH_MAIL=0
+ZUSATZ_DOMAINS=""                           # weitere Domains (Leerzeichen-getrennt, ASCII/Punycode)
 MAIL_HOST="${MAIL_HOST:-}"                  # leer: mail.<domain>
 POSTMASTER=""
 
@@ -111,7 +112,7 @@ Aufruf: $0 -H <server> -d <domain> [Optionen]
 Einstellungsdatei (empfohlen):
   -f <datei>      Einstellungen dieses Servers lesen und – mit den Änderungen aus den
                   übrigen Optionen – zurückschreiben (wird beim ersten Mal angelegt).
-                  Dauerhaft gespeichert: -H -d -W -M -X -P -e -B -R -u -n -t -p -S. Nicht gespeichert: -c -U -N -L -r -a -m -y.
+                  Dauerhaft gespeichert: -H -d -A -W -M -X -P -e -B -R -u -n -t -p -S. Nicht gespeichert: -c -U -N -L -r -a -m -y.
 
 Pflicht (ohne -f bzw. beim ersten Aufruf mit -f):
   -H <server>     IP-Adresse oder Name des vServers
@@ -132,6 +133,14 @@ Anwendung:
   -a <benutzer>   Vorstandskonto mit Verwaltungsrechten anlegen bzw. ergänzen,
   -m <e-mail>     z. B. -a michael.bramer -m adresse@example.org. Ausgegeben wird
                   ein Link zum Setzen des Passworts (7 Tage gültig).
+
+Weitere Domains:
+  -A <domain>     zusätzliche Domain, mehrfach möglich, auch mit Umlaut
+                  (z. B. -A förderverein-kf-jf-kreuzau.de -A fv-kf-jf-kreuzau.de).
+                  Webseite: leitet auf <domain> um (mit -W auch www.).
+                  Mail (mit -M): jede Adresse gilt auch unter dieser Domain und
+                  landet im selben Postfach; verschickt wird nur mit <domain>.
+                  Entfernen: in der Einstellungsdatei (-f) aus ZUSATZ_DOMAINS löschen.
 
 Mailserver:
   -M              Mailserver einrichten bzw. aktualisieren (Exim, Dovecot, rspamd);
@@ -160,7 +169,7 @@ HILFE
 }
 
 # Einstellungen, die in der Datei (-f) gespeichert werden
-DAUERHAFT=(SERVER DOMAIN WITH_WWW WITH_MAIL MAIL_HOST POSTMASTER ACME_EMAIL BACKUP_REPO
+DAUERHAFT=(SERVER DOMAIN ZUSATZ_DOMAINS WITH_WWW WITH_MAIL MAIL_HOST POSTMASTER ACME_EMAIL BACKUP_REPO
            REPO_URL ADMIN_USER NEW_HOSTNAME TIMEZONE SSH_PORT SKIP_HARDEN)
 EINSTELLUNGEN=""
 declare -A AUS_DATEI=()     # so beim Start in der Datei
@@ -209,7 +218,7 @@ einstellungen_schreiben() {
   fi
 }
 
-OPTSTRING=":f:H:d:r:R:a:m:e:B:u:n:t:p:P:X:LWUNMcSyh"
+OPTSTRING=":f:H:d:A:r:R:a:m:e:B:u:n:t:p:P:X:LWUNMcSyh"
 while getopts "$OPTSTRING" opt; do
   case "$opt" in
     f) EINSTELLUNGEN="$OPTARG" ;;
@@ -220,10 +229,12 @@ done
 if [[ -n "$EINSTELLUNGEN" && -f "$EINSTELLUNGEN" ]]; then einstellungen_lesen; fi
 OPTIND=1
 
+ZUSATZ_NEU=()
 while getopts "$OPTSTRING" opt; do
   case "$opt" in
     f) ;;
     H) SERVER="$OPTARG" ;;
+    A) ZUSATZ_NEU+=("$OPTARG") ;;
     d) DOMAIN="$OPTARG" ;;
     r) GIT_REF="$OPTARG" ;;
     R) REPO_URL="$OPTARG" ;;
@@ -265,6 +276,28 @@ if [[ -n "$APP_ADMIN$APP_ADMIN_MAIL" ]]; then
 fi
 [[ $UPDATE_ONLY -eq 1 && $NO_APP -eq 1 ]] && { echo "-U und -N schließen sich aus." >&2; exit 2; }
 [[ $LOCAL_UPLOAD -eq 1 && $NO_APP -eq 1 ]] && { echo "-L und -N schließen sich aus." >&2; exit 2; }
+# Domains mit Umlaut in ASCII (Punycode) umwandeln; so stehen sie auch in DNS, Caddy, Exim
+ascii_domain() {
+  local d="${1,,}"; d="${d%.}"
+  if [[ "$d" == *[![:ascii:]]* ]]; then
+    if command -v idn2 >/dev/null; then d="$(idn2 --quiet -- "$d")" || return 1
+    elif [[ "$d" == *ß* ]]; then echo "Domains mit ß brauchen idn2 (apt install idn2)." >&2; return 1
+    elif command -v python3 >/dev/null; then d="$(python3 -c 'import sys; print(sys.argv[1].encode("idna").decode())' "$d")" || return 1
+    else echo "Für Domains mit Umlaut wird idn2 oder python3 benötigt." >&2; return 1; fi
+  fi
+  printf '%s' "$d"
+}
+gueltige_domain() { [[ "$1" =~ ^[a-z0-9]([a-z0-9.-]*[a-z0-9])?$ && "$1" == *.* ]]; }
+ZUSATZ_LISTE=""
+for d in ${ZUSATZ_DOMAINS} "${ZUSATZ_NEU[@]}"; do
+  a="$(ascii_domain "$d")" || { echo "Domain nicht umwandelbar: $d" >&2; exit 2; }
+  gueltige_domain "$a" || { echo "Ungültige Zusatzdomain: $d" >&2; exit 2; }
+  [[ "$a" != "$DOMAIN" && "$a" != "www.$DOMAIN" ]] || { echo "Zusatzdomain gleich der Domain: $d" >&2; exit 2; }
+  [[ " $ZUSATZ_LISTE " == *" $a "* ]] || ZUSATZ_LISTE="${ZUSATZ_LISTE:+$ZUSATZ_LISTE }$a"
+  [[ "$a" == "${d,,}" ]] || echo "Zusatzdomain $d → $a"
+done
+ZUSATZ_DOMAINS="${ZUSATZ_LISTE:-}"
+
 MAIL_HOST="${MAIL_HOST:-mail.$DOMAIN}"
 [[ "$MAIL_HOST" =~ ^[a-z0-9]([a-z0-9.-]*[a-z0-9])?$ && "$MAIL_HOST" == *.* ]] \
   || { echo "Ungültiger Mail-Rechnername: $MAIL_HOST" >&2; exit 2; }
@@ -436,7 +469,8 @@ dns_preflight() {
   ip6=$(ssh "${SSH_OPTS[@]}" "$TARGET" \
         'ip -6 -o addr show scope global 2>/dev/null | awk "{print \$4}" | cut -d/ -f1 | grep -v "^f[cd]" | head -n1' 2>/dev/null || true)
   log "Server: IPv4 ${ip4:-unbekannt} | IPv6 ${ip6:-keine}"
-  local domains=("$DOMAIN"); [[ $WITH_WWW -eq 1 ]] && domains+=("www.$DOMAIN")
+  local domains=("$DOMAIN") z; [[ $WITH_WWW -eq 1 ]] && domains+=("www.$DOMAIN")
+  for z in $ZUSATZ_DOMAINS; do domains+=("$z"); [[ $WITH_WWW -eq 1 ]] && domains+=("www.$z"); done
   for d in "${domains[@]}"; do
     a_list=$(q A "$d" | grep -E '^[0-9.]+$' || true)
     aaaa_list=$(q AAAA "$d" | grep ':' || true)
@@ -491,9 +525,9 @@ fi
 REMOTE_TAR=""
 run_remote() {  # $1 = Phase, Skript kommt über stdin
   local envs
-  envs=$(printf 'PHASE=%q ADMIN_USER=%q TIMEZONE=%q NEW_HOSTNAME=%q DOMAIN=%q WITH_WWW=%q ACME_EMAIL=%q BACKUP_REPO=%q STAMP=%q SSH_PORT=%q REPO_URL=%q REPO_URL_DEFAULT=%q GIT_REF=%q NO_APP=%q LOCAL_UPLOAD=%q REMOTE_TAR=%q APP_COMMIT=%q APP_DESC=%q APP_ADMIN=%q APP_ADMIN_MAIL=%q WITH_MAIL=%q MAIL_HOST=%q POSTMASTER=%q' \
+  envs=$(printf 'PHASE=%q ADMIN_USER=%q TIMEZONE=%q NEW_HOSTNAME=%q DOMAIN=%q WITH_WWW=%q ACME_EMAIL=%q BACKUP_REPO=%q STAMP=%q SSH_PORT=%q REPO_URL=%q REPO_URL_DEFAULT=%q GIT_REF=%q NO_APP=%q LOCAL_UPLOAD=%q REMOTE_TAR=%q APP_COMMIT=%q APP_DESC=%q APP_ADMIN=%q APP_ADMIN_MAIL=%q WITH_MAIL=%q MAIL_HOST=%q POSTMASTER=%q ZUSATZ_DOMAINS=%q' \
     "$1" "$ADMIN_USER" "$TIMEZONE" "$NEW_HOSTNAME" "$DOMAIN" "$WITH_WWW" "$ACME_EMAIL" "$BACKUP_REPO" "$STAMP" "$SSH_PORT" \
-    "$REPO_URL" "$REPO_URL_DEFAULT" "$GIT_REF" "$NO_APP" "$LOCAL_UPLOAD" "$REMOTE_TAR" "$APP_COMMIT" "$APP_DESC" "$APP_ADMIN" "$APP_ADMIN_MAIL" "$WITH_MAIL" "$MAIL_HOST" "$POSTMASTER")
+    "$REPO_URL" "$REPO_URL_DEFAULT" "$GIT_REF" "$NO_APP" "$LOCAL_UPLOAD" "$REMOTE_TAR" "$APP_COMMIT" "$APP_DESC" "$APP_ADMIN" "$APP_ADMIN_MAIL" "$WITH_MAIL" "$MAIL_HOST" "$POSTMASTER" "$ZUSATZ_DOMAINS")
   # shellcheck disable=SC2029  # Variablen sollen lokal expandiert werden
   ssh "${SSH_OPTS[@]}" "$TARGET" "$SUDO env $envs bash -s"
 }
@@ -949,6 +983,7 @@ phase_tool() {
   ensure_kv "$DENV" DEFAULT_REF "main"
   set_kv "$DENV" DOMAIN "$DOMAIN"
   set_kv "$DENV" WITH_WWW "$WITH_WWW"
+  set_kv "$DENV" ZUSATZ_DOMAINS "$ZUSATZ_DOMAINS"
   set_kv "$DENV" ACME_EMAIL "$ACME_EMAIL"
 
   # Domain in den Einstellungen der Anwendung (bei jedem Lauf, auch mit -U)
@@ -1015,6 +1050,7 @@ DEFAULT_REF="$(getkv "$DENV" DEFAULT_REF)"
 DOMAIN="$(getkv "$DENV" DOMAIN)"
 WITH_WWW="$(getkv "$DENV" WITH_WWW)"
 ACME_EMAIL="$(getkv "$DENV" ACME_EMAIL)"
+ZUSATZ_DOMAINS="$(getkv "$DENV" ZUSATZ_DOMAINS || true)"   # leiten auf $DOMAIN um (-A)
 MAIL_HOST="$(getkv "$DENV" MAIL_HOST || true)"   # nur mit Mailserver (-M)
 MAIL_WEB="$(getkv "$DENV" MAIL_WEB || true)"     # z. B. mta-sts.<domain>, wenn DNS stimmt
 
@@ -1130,6 +1166,15 @@ CADDY
     if [[ "$WITH_WWW" == 1 ]]; then
       printf '\nwww.%s {\n\tredir https://%s{uri} permanent\n}\n' "$DOMAIN" "$DOMAIN"
     fi
+    local z
+    for z in $ZUSATZ_DOMAINS; do
+      # weitere Domains (z. B. mit Umlaut) leiten auf die Hauptdomain um
+      if [[ "$WITH_WWW" == 1 ]]; then
+        printf '\n%s, www.%s {\n\tredir https://%s{uri} permanent\n}\n' "$z" "$z" "$DOMAIN"
+      else
+        printf '\n%s {\n\tredir https://%s{uri} permanent\n}\n' "$z" "$DOMAIN"
+      fi
+    done
     if [[ -n "$MAIL_HOST" ]]; then
       # Zertifikat des Mailservers: certbot legt die Antwort in /var/lib/fv-mail/acme ab
       printf '\nhttp://%s {\n\thandle /.well-known/acme-challenge/* {\n\t\troot * /var/lib/fv-mail/acme\n\t\tfile_server\n\t}\n\thandle {\n\t\tredir https://%s{uri}\n\t}\n}\n' "$MAIL_HOST" "$DOMAIN"
@@ -1407,7 +1452,7 @@ MENV=/etc/fv-mail/mail.env
 vorlage() {  # vorlage ZIEL MODUS BESITZER:GRUPPE < Text  (ersetzt @DOMAIN@, @HOST@ …)
   local tmp; tmp="$(mktemp)"
   sed -e "s|@DOMAIN@|$MAIL_DOMAIN|g" -e "s|@HOST@|$MAIL_HOST|g" -e "s|@VMAIL_UID@|${VMAIL_UID:-}|g" \
-      -e "s|@QUOTA@|${QUOTA:-5}|g" -e "s|@LISTEN@|${LISTEN:-*}|g" > "$tmp"
+      -e "s|@QUOTA@|${QUOTA:-5}|g" -e "s|@ZUSATZ@|${ZUSATZ_DOMAINS// / : }|g" -e "s|@LISTEN@|${LISTEN:-*}|g" > "$tmp"
   install -m "$2" -o "${3%:*}" -g "${3#*:}" "$tmp" "$1"; rm -f "$tmp"
 }
 
@@ -1446,6 +1491,7 @@ phase_mail() {
   chown root:root "$MENV"; chmod 600 "$MENV"
   set_kv "$MENV" MAIL_DOMAIN "$MAIL_DOMAIN"
   set_kv "$MENV" MAIL_HOST "$MAIL_HOST"
+  set_kv "$MENV" ZUSATZ_DOMAINS "$ZUSATZ_DOMAINS"
   ensure_kv "$MENV" DKIM_SELECTOR "fv$(date +%Y)"
   ensure_kv "$MENV" SRS_SECRET "$(rnd 32)"
   ensure_kv "$MENV" RSPAMD_PASSWORT "$(rnd 18)"
@@ -1628,6 +1674,8 @@ HOOK
       echo "FV_HOST = $MAIL_HOST"
       echo "FV_DKIM_SELEKTOR = $sel"
       echo "FV_SRS_GEHEIMNIS = $(getkv "$MENV" SRS_SECRET)"
+      # weitere Domains: nur Empfang, gleiche Adressen wie FV_DOMAIN (Liste mit ":")
+      echo "FV_ZUSATZ = ${ZUSATZ_DOMAINS// / : }"
       if [[ $nur_ipv4 -eq 1 ]]; then echo "FV_NUR_IPV4 = 1"; fi
     } > /etc/exim4/fv-makros.conf )
   chown root:Debian-exim /etc/exim4/fv-makros.conf; chmod 640 /etc/exim4/fv-makros.conf
@@ -1640,7 +1688,7 @@ HOOK
 # Systemfilter (angelegt von setup-server-fv-web.sh): Mails, die eine angemeldete Person
 # mit einem Verteiler als Absender verschickt, landen auch im Archiv des Verteilers.
 if $authenticated_id is not "" and
-   "${lookup pgsql{SELECT 1 FROM mail_archive WHERE aktiv AND verteiler = '${quote_pgsql:${lc:${sg{$sender_address_local_part}{[+].*}{}}@$sender_address_domain}}'}{ja}{nein}}" is "ja"
+   "${lookup pgsql{SELECT 1 FROM mail_archive WHERE aktiv AND verteiler = '${quote_pgsql:${lc:${sg{$sender_address_local_part}{[+].*}{}}}@${if inlisti{$sender_address_domain}{@ZUSATZ@}{@DOMAIN@}{${lc:$sender_address_domain}}}}'}{ja}{nein}}" is "ja"
 then
   unseen deliver "fv-archiv+${sg{${lc:${sg{$sender_address_local_part}{[+].*}{}}}}{[^a-z0-9-]}{-}}@@DOMAIN@"
 endif
@@ -1657,7 +1705,9 @@ FILTER
 
 primary_hostname = FV_HOST
 qualify_domain = FV_DOMAIN
-domainlist local_domains = FV_DOMAIN : FV_HOST
+# weitere Domains (-A): Adressen gelten dort genauso, landen im selben Postfach
+domainlist fv_zusatz = FV_ZUSATZ
+domainlist local_domains = FV_DOMAIN : FV_HOST : +fv_zusatz
 hostlist relay_from_hosts = <; 127.0.0.1 ; ::1
 
 .ifdef FV_NUR_IPV4
@@ -1706,10 +1756,14 @@ log_file_path = /var/log/exim4/%slog
 log_selector = +tls_cipher +smtp_protocol_error +smtp_syntax_error +incoming_port -host_lookup_failed
 
 # Adresse ohne Plus-Zusatz, klein geschrieben, für SQL (ACLs sehen den vollen Teil vor @)
-FV_ADR = ${quote_pgsql:${lc:${sg{$local_part}{[+].*}{}}@$domain}}
+# Domain für Abfragen: weitere Domains zählen als FV_DOMAIN
+FV_DOM = ${if match_domain{$domain}{+fv_zusatz}{FV_DOMAIN}{${lc:$domain}}}
+FV_ADR = ${quote_pgsql:${lc:${sg{$local_part}{[+].*}{}}}@FV_DOM}
 # in Routern ist der Zusatz (+…) schon abgetrennt
 FV_RCPT = ${quote_pgsql:${lc:$local_part@$domain}}
-FV_ABSENDER = ${quote_pgsql:${lc:${sg{$sender_address_local_part}{[+].*}{}}@$sender_address_domain}}
+# Absender ohne Plus-Zusatz; weitere Domains (-A) zählen als FV_DOMAIN, dürfen also auch senden
+FV_ABSENDER = ${quote_pgsql:${lc:${sg{$sender_address_local_part}{[+].*}{}}}@${if match_domain{$sender_address_domain}{+fv_zusatz}{FV_DOMAIN}{${lc:$sender_address_domain}}}}
+FV_FROM_DOM = ${lc:${domain:${address:$h_From:}}}
 FV_AUTH = ${quote_pgsql:${lc:$authenticated_id}}
 
 begin acl
@@ -1758,7 +1812,7 @@ acl_check_rcpt:
   deny    dnslists = zen.spamhaus.org=127.0.0.2,127.0.0.3,127.0.0.4,127.0.0.9,127.0.0.10,127.0.0.11
           message = Abgelehnt: $sender_host_address steht in $dnslist_domain
 
-  deny    condition = ${lookup pgsql{SELECT 1 FROM exim_plus_gesperrt WHERE adresse = '${quote_pgsql:${lc:$local_part@$domain}}'}{true}{false}}
+  deny    condition = ${lookup pgsql{SELECT 1 FROM exim_plus_gesperrt WHERE adresse = '${quote_pgsql:${lc:$local_part}@FV_DOM}'}{true}{false}}
           message = Diese Adresse nimmt keine E-Mails mehr an
 
   deny    condition = ${lookup pgsql{SELECT 1 FROM exim_adressen WHERE adresse = 'FV_ADR' AND art = 'gesperrt'}{true}{false}}
@@ -1772,7 +1826,7 @@ acl_check_rcpt:
   require verify = recipient
 
   # volles Postfach: gleich hier ablehnen statt später eine Fehlermeldung zu schicken
-  warn    set acl_m_quota = ${readsocket{/run/dovecot/quota-status}{request=smtpd_access_policy\nrecipient=${lc:$local_part@$domain}\nsize=$message_size\n\n}{5s}{}{action=DUNNO}}
+  warn    set acl_m_quota = ${readsocket{/run/dovecot/quota-status}{request=smtpd_access_policy\nrecipient=${lc:$local_part}@FV_DOM\nsize=$message_size\n\n}{5s}{}{action=DUNNO}}
   deny    condition = ${if match{$acl_m_quota}{^action=55}}
           message = Das Postfach ist voll
 
@@ -1783,7 +1837,7 @@ acl_check_data:
 
   # angemeldet: auch die sichtbare Absenderzeile (From) muss erlaubt sein
   deny    authenticated = *
-          condition = ${lookup pgsql{SELECT 1 FROM exim_absender WHERE benutzer = 'FV_AUTH' AND adresse = '${quote_pgsql:${lc:${sg{${local_part:${address:$h_From:}}}{[+].*}{}}@${domain:${address:$h_From:}}}}'}{false}{true}}
+          condition = ${lookup pgsql{SELECT 1 FROM exim_absender WHERE benutzer = 'FV_AUTH' AND adresse = '${quote_pgsql:${lc:${sg{${local_part:${address:$h_From:}}}{[+].*}{}}}@${if match_domain{FV_FROM_DOM}{+fv_zusatz}{FV_DOMAIN}{FV_FROM_DOM}}}'}{false}{true}}
           message = Absender (From) ist für $authenticated_id nicht erlaubt
   accept  authenticated = *
 
@@ -1821,6 +1875,14 @@ inbound_srs_failure:
   condition = ${if inbound_srs{$local_part}{}}
   allow_fail
   data = :fail: Ungültige SRS-Adresse
+
+# weitere Domains: auf dieselbe Adresse der Hauptdomain umschreiben (Zusatz +… bleibt)
+fv_zusatzdomain:
+  driver = redirect
+  domains = +fv_zusatz
+  local_part_suffix = +*
+  local_part_suffix_optional
+  data = ${quote_local_part:$local_part$local_part_suffix}@FV_DOMAIN
 
 dnslookup:
   driver = dnslookup
@@ -1902,10 +1964,11 @@ remote_smtp:
   hosts_try_dane = *
   # weitergeleitete Mails fremder Absender (Verteiler): Rückweg über SRS
   return_path = ${if and{{!eq{$return_path}{}}{!match_domain{$sender_address_domain}{+local_domains}}}{${srs_encode{FV_SRS_GEHEIMNIS}{$return_path}{FV_DOMAIN}}}fail}
-  # DKIM-Signatur nur für Mails mit Absender aus der eigenen Domain
-  dkim_domain = FV_DOMAIN
+  # DKIM-Signatur für Mails mit Absender aus der eigenen Domain oder einer weiteren (-A);
+  # alle nutzen denselben Schlüssel und Selektor
+  dkim_domain = ${if match_domain{FV_FROM_DOM}{FV_DOMAIN : +fv_zusatz}{FV_FROM_DOM}{FV_DOMAIN}}
   dkim_selector = FV_DKIM_SELEKTOR
-  dkim_private_key = ${if eqi{${domain:${address:$h_From:}}}{FV_DOMAIN}{/etc/fv-mail/dkim/FV_DKIM_SELEKTOR.key}{0}}
+  dkim_private_key = ${if match_domain{FV_FROM_DOM}{FV_DOMAIN : +fv_zusatz}{/etc/fv-mail/dkim/FV_DKIM_SELEKTOR.key}{0}}
   dkim_canon = relaxed
 
 dovecot_lmtp:
@@ -2390,6 +2453,7 @@ MENV=/etc/fv-mail/mail.env
 [[ -f "$MENV" ]] || { echo "$MENV fehlt – Mailserver mit setup-server-fv-web.sh … -M einrichten." >&2; exit 1; }
 getkv() { grep -m1 "^$1=" "$MENV" | cut -d= -f2- | sed 's/^"//; s/"$//'; }
 DOMAIN="$(getkv MAIL_DOMAIN)"; HOST="$(getkv MAIL_HOST)"; SELEKTOR="$(getkv DKIM_SELECTOR)"
+ZUSATZ="$(getkv ZUSATZ_DOMAINS || true)"
 ARCHIV=/var/vmail/archiv/Maildir
 ARCHIV_BENUTZER="fv-archiv@$DOMAIN"
 STAND=/var/lib/fv-mail
@@ -2471,11 +2535,14 @@ plusadressen() {
     elif (( groesse > alt_off )); then
       tail -c +"$((alt_off + 1))" "$log" | head -c "$((groesse - alt_off))"
     fi
-  } | awk -v d="@$DOMAIN" '
+  } | awk -v d="$DOMAIN" -v z="$ZUSATZ" '
+      BEGIN { n = split(z, liste, " "); for (i = 1; i <= n; i++) weitere[liste[i]] = 1 }
       $4 == "=>" || $4 == "->" {
         a = $5; if ($6 ~ /^</) { a = $6; gsub(/[<>]/, "", a) }
-        a = tolower(a)
-        if (a ~ /^[^@]+\+[^@]*@/ && a !~ /^fv-archiv\+/ && substr(a, length(a) - length(d) + 1) == d) print a
+        a = tolower(a); at = index(a, "@"); if (!at) next
+        lp = substr(a, 1, at - 1); dom = substr(a, at + 1)
+        if (dom in weitere) dom = d                 # weitere Domains zählen als Hauptdomain
+        if (dom == d && lp ~ /\+/ && lp !~ /^fv-archiv\+/) print lp "@" dom
       }' | manage mail_plusadressen >/dev/null
   printf '%s %s\n' "$ino" "$groesse" > "$pos"
 }
@@ -2559,6 +2626,16 @@ _pop3s._tcp.$DOMAIN.        SRV    0 0 0 .
 Nur mit DNSSEC (sonst wirkungslos):
 _25._tcp.$HOST.             TLSA   3 1 1 $tlsa
 
+$(for z in $ZUSATZ; do cat <<ZONE
+Weitere Domain $z (Webseite leitet um; Mail empfangen und senden; Zone $z):
+$z.          A      $ip4
+$z.          MX     10 $HOST.
+$z.          TXT    "v=spf1 mx -all"
+$SELEKTOR._domainkey.$z.  TXT  (derselbe Wert wie bei $DOMAIN)
+_dmarc.$z.   TXT    "v=DMARC1; p=none; rua=mailto:postmaster@$z"
+
+ZONE
+done)
 Beim Server-Anbieter (Reverse-DNS, PTR):
 $ip4  ->  $HOST
 $( [[ -n "$ip6" ]] && echo "$ip6  ->  $HOST" )
@@ -2575,6 +2652,13 @@ EOF
   pruefe "_mta-sts.$DOMAIN" TXT "v=STSv1"
   pruefe "_smtp._tls.$DOMAIN" TXT "v=TLSRPTv1"
   pruefe "$(awk -F. '{print $4"."$3"."$2"."$1".in-addr.arpa"}' <<<"$ip4")" PTR "$HOST"
+  local z
+  for z in $ZUSATZ; do
+    pruefe "$z" MX "$HOST"
+    pruefe "$z" TXT "v=spf1"
+    pruefe "$SELEKTOR._domainkey.$z" TXT "${dkim:0:40}"
+    pruefe "_dmarc.$z" TXT "v=DMARC1"
+  done
 }
 
 case "${1:-}" in

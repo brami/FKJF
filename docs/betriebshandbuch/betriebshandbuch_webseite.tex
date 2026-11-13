@@ -509,7 +509,11 @@ Jede weitere Domain
         \cmd{vera@fv-kf-jf-kreuzau.de} landet im selben Postfach wie
         \cmd{vera@foerderverein-kf-jf-kreuzau.de}; ebenso Aliase, Verteiler, Sperren und
         Plus-Adressen,
-  \item verschickt \emph{nie} selbst: Absender ist immer die Hauptdomain.
+  \item kann auch zum \emph{Senden} verwendet werden: Wer \cmd{vera@foerderverein-…}
+        verwenden darf, darf auch \cmd{vera@fv-kf-jf-kreuzau.de} als Absender eintragen
+        (im Mailprogramm als weitere Identität). Die Mails werden ebenso mit DKIM
+        signiert. Üblich bleibt die Hauptdomain; bei Domains mit Umlaut wird vom Senden
+        abgeraten, weil manche Empfänger solche Adressen nicht verarbeiten.
 \end{itemize}
 
 Domains mit Umlaut schreibt das Skript selbst in die technische Form (Punycode) um,
@@ -526,9 +530,11 @@ Einstellungsdatei und wird so bei SchlundTech angezeigt.
 ./setup-server-fv-web.sh -f kreuzau.env -U -A förderverein-kf-jf-kreuzau.de -A fv-kf-jf-kreuzau.de
 \end{befehl}
   \item \erledigt \cmd{sudo fv-mail dns} zeigt je weiterer Domain die Mail-Einträge:
-        \cmd{MX} auf \cmd{mail.<hauptdomain>}, \cmd{SPF "v=spf1 -all"} und
-        \cmd{DMARC "p=reject"} -- die beiden letzten verhindern, dass jemand mit dieser
-        Domain Mails fälscht. Eintragen und mit \cmd{sudo fv-mail dns} prüfen.
+        \cmd{MX} auf \cmd{mail.<hauptdomain>}, \cmd{SPF "v=spf1 mx -all"}, den
+        DKIM-Eintrag (derselbe Wert wie bei der Hauptdomain, gleicher Selektor) und
+        \cmd{DMARC} zunächst mit \cmd{p=none}. Eintragen und mit \cmd{sudo fv-mail dns}
+        prüfen. DMARC später wie bei der Hauptdomain verschärfen
+        (Schritt~\ref{dmarc}).
 \end{enumerate}
 
 Entfernen: Domain in der Einstellungsdatei aus \cmd{ZUSATZ\_DOMAINS} löschen und das

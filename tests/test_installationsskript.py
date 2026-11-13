@@ -156,7 +156,7 @@ def test_mail_konfigurationen_ohne_platzhalterreste():
     for marke in ("EXIM", "DOVECOT", "FILTER"):
         text = _heredoc(MAIL, marke)
         assert set(re.findall(r"@[A-Z_]+@", text)) <= {"@DOMAIN@", "@HOST@", "@VMAIL_UID@",
-                                                         "@QUOTA@", "@LISTEN@"}, marke
+                                                         "@QUOTA@", "@LISTEN@", "@ZUSATZ@"}, marke
     dovecot = _heredoc(MAIL, "DOVECOT")
     assert "dovecot_config_version = 2.4" in dovecot
     assert "passwort IS NOT NULL" in dovecot          # Postfach ohne Passwort: Zustellung ja, Anmeldung nein

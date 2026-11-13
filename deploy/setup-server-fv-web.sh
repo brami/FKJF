@@ -1452,7 +1452,7 @@ MENV=/etc/fv-mail/mail.env
 vorlage() {  # vorlage ZIEL MODUS BESITZER:GRUPPE < Text  (ersetzt @DOMAIN@, @HOST@ …)
   local tmp; tmp="$(mktemp)"
   sed -e "s|@DOMAIN@|$MAIL_DOMAIN|g" -e "s|@HOST@|$MAIL_HOST|g" -e "s|@VMAIL_UID@|${VMAIL_UID:-}|g" \
-      -e "s|@QUOTA@|${QUOTA:-5}|g" -e "s|@LISTEN@|${LISTEN:-*}|g" > "$tmp"
+      -e "s|@QUOTA@|${QUOTA:-5}|g" -e "s|@ZUSATZ@|${ZUSATZ_DOMAINS// / : }|g" -e "s|@LISTEN@|${LISTEN:-*}|g" > "$tmp"
   install -m "$2" -o "${3%:*}" -g "${3#*:}" "$tmp" "$1"; rm -f "$tmp"
 }
 
@@ -1688,7 +1688,7 @@ HOOK
 # Systemfilter (angelegt von setup-server-fv-web.sh): Mails, die eine angemeldete Person
 # mit einem Verteiler als Absender verschickt, landen auch im Archiv des Verteilers.
 if $authenticated_id is not "" and
-   "${lookup pgsql{SELECT 1 FROM mail_archive WHERE aktiv AND verteiler = '${quote_pgsql:${lc:${sg{$sender_address_local_part}{[+].*}{}}@$sender_address_domain}}'}{ja}{nein}}" is "ja"
+   "${lookup pgsql{SELECT 1 FROM mail_archive WHERE aktiv AND verteiler = '${quote_pgsql:${lc:${sg{$sender_address_local_part}{[+].*}{}}}@${if inlisti{$sender_address_domain}{@ZUSATZ@}{@DOMAIN@}{${lc:$sender_address_domain}}}}'}{ja}{nein}}" is "ja"
 then
   unseen deliver "fv-archiv+${sg{${lc:${sg{$sender_address_local_part}{[+].*}{}}}}{[^a-z0-9-]}{-}}@@DOMAIN@"
 endif
@@ -1761,7 +1761,9 @@ FV_DOM = ${if match_domain{$domain}{+fv_zusatz}{FV_DOMAIN}{${lc:$domain}}}
 FV_ADR = ${quote_pgsql:${lc:${sg{$local_part}{[+].*}{}}}@FV_DOM}
 # in Routern ist der Zusatz (+…) schon abgetrennt
 FV_RCPT = ${quote_pgsql:${lc:$local_part@$domain}}
-FV_ABSENDER = ${quote_pgsql:${lc:${sg{$sender_address_local_part}{[+].*}{}}@$sender_address_domain}}
+# Absender ohne Plus-Zusatz; weitere Domains (-A) zählen als FV_DOMAIN, dürfen also auch senden
+FV_ABSENDER = ${quote_pgsql:${lc:${sg{$sender_address_local_part}{[+].*}{}}}@${if match_domain{$sender_address_domain}{+fv_zusatz}{FV_DOMAIN}{${lc:$sender_address_domain}}}}
+FV_FROM_DOM = ${lc:${domain:${address:$h_From:}}}
 FV_AUTH = ${quote_pgsql:${lc:$authenticated_id}}
 
 begin acl
@@ -1835,7 +1837,7 @@ acl_check_data:
 
   # angemeldet: auch die sichtbare Absenderzeile (From) muss erlaubt sein
   deny    authenticated = *
-          condition = ${lookup pgsql{SELECT 1 FROM exim_absender WHERE benutzer = 'FV_AUTH' AND adresse = '${quote_pgsql:${lc:${sg{${local_part:${address:$h_From:}}}{[+].*}{}}@${domain:${address:$h_From:}}}}'}{false}{true}}
+          condition = ${lookup pgsql{SELECT 1 FROM exim_absender WHERE benutzer = 'FV_AUTH' AND adresse = '${quote_pgsql:${lc:${sg{${local_part:${address:$h_From:}}}{[+].*}{}}}@${if match_domain{FV_FROM_DOM}{+fv_zusatz}{FV_DOMAIN}{FV_FROM_DOM}}}'}{false}{true}}
           message = Absender (From) ist für $authenticated_id nicht erlaubt
   accept  authenticated = *
 
@@ -1962,10 +1964,11 @@ remote_smtp:
   hosts_try_dane = *
   # weitergeleitete Mails fremder Absender (Verteiler): Rückweg über SRS
   return_path = ${if and{{!eq{$return_path}{}}{!match_domain{$sender_address_domain}{+local_domains}}}{${srs_encode{FV_SRS_GEHEIMNIS}{$return_path}{FV_DOMAIN}}}fail}
-  # DKIM-Signatur nur für Mails mit Absender aus der eigenen Domain
-  dkim_domain = FV_DOMAIN
+  # DKIM-Signatur für Mails mit Absender aus der eigenen Domain oder einer weiteren (-A);
+  # alle nutzen denselben Schlüssel und Selektor
+  dkim_domain = ${if match_domain{FV_FROM_DOM}{FV_DOMAIN : +fv_zusatz}{FV_FROM_DOM}{FV_DOMAIN}}
   dkim_selector = FV_DKIM_SELEKTOR
-  dkim_private_key = ${if eqi{${domain:${address:$h_From:}}}{FV_DOMAIN}{/etc/fv-mail/dkim/FV_DKIM_SELEKTOR.key}{0}}
+  dkim_private_key = ${if match_domain{FV_FROM_DOM}{FV_DOMAIN : +fv_zusatz}{/etc/fv-mail/dkim/FV_DKIM_SELEKTOR.key}{0}}
   dkim_canon = relaxed
 
 dovecot_lmtp:
@@ -2624,11 +2627,12 @@ Nur mit DNSSEC (sonst wirkungslos):
 _25._tcp.$HOST.             TLSA   3 1 1 $tlsa
 
 $(for z in $ZUSATZ; do cat <<ZONE
-Weitere Domain $z (nur Empfang, Webseite leitet um; Zone $z):
+Weitere Domain $z (Webseite leitet um; Mail empfangen und senden; Zone $z):
 $z.          A      $ip4
 $z.          MX     10 $HOST.
-$z.          TXT    "v=spf1 -all"           (verschickt nie selbst)
-_dmarc.$z.   TXT    "v=DMARC1; p=reject"
+$z.          TXT    "v=spf1 mx -all"
+$SELEKTOR._domainkey.$z.  TXT  (derselbe Wert wie bei $DOMAIN)
+_dmarc.$z.   TXT    "v=DMARC1; p=none; rua=mailto:postmaster@$z"
 
 ZONE
 done)
@@ -2652,6 +2656,7 @@ EOF
   for z in $ZUSATZ; do
     pruefe "$z" MX "$HOST"
     pruefe "$z" TXT "v=spf1"
+    pruefe "$SELEKTOR._domainkey.$z" TXT "${dkim:0:40}"
     pruefe "_dmarc.$z" TXT "v=DMARC1"
   done
 }

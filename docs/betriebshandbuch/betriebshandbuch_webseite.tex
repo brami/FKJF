@@ -232,54 +232,171 @@ BACKUP_REPO="sftp://u12345@u12345.your-storagebox.de:23/fv-web"
         \cmd{-W} fehlt.
 \end{itemize}
 
-\subsection{Voraussetzungen}
+\subsection{Neuen Server aufsetzen -- Schritt für Schritt}\label{sec:neu}
 
-\begin{itemize}
-  \item vServer mit frischem Debian 13, Anmeldung als root mit SSH-Schlüssel.
-  \item DNS: A-Eintrag (und ggf.\ AAAA) der Domain zeigt auf den Server; für
-        \cmd{-W} auch \cmd{www}.
-  \item Auf dem eigenen Rechner: \cmd{bash}, \cmd{ssh}; das Skript allein genügt
-        (das Repository ist nur für \cmd{-L} nötig).
-\end{itemize}
+Diese Anleitung führt von einem leeren vServer bis zum fertigen Betrieb mit Webseite,
+Mailserver, Sicherung und Überwachung. Die Kästchen dienen zum Abhaken.
 
-\subsection{Ablauf}
+\begin{dshinweis}[title={Erst unter einem Testnamen, dann umstellen}]
+Solange die bisherige Webseite und die bisherigen Postfächer noch woanders laufen,
+wird der neue Server zunächst unter einem \textbf{Testnamen} eingerichtet, z.\,B.\
+\cmd{neu.foerderverein-kf-jf-kreuzau.de}. Die alte Webseite bleibt dabei erreichbar.
+Erst wenn die Inhalte übernommen sind, wird die Hauptdomain umgestellt
+(Phase~E) und danach der Mailserver eingerichtet (Phase~F). Ist die Domain frei
+(keine alte Webseite), in Phase~B bis~D gleich die Hauptdomain verwenden und
+Phase~E überspringen.
+\end{dshinweis}
+
+In den Beispielen: Server \cmd{203.0.113.10} (IPv6 \cmd{2001:db8::10}), Domain
+\cmd{foerderverein-kf-jf-kreuzau.de}, Einstellungsdatei \pfad{kreuzau.env}.
+
+\subsubsection*{Phase A -- Vorbereitung}
 
 \begin{enumerate}
-  \item \textbf{Nur prüfen} (ändert nichts): SSH, belegte Ports 80/443, DNS.
+  \item \erledigt\textbf{vServer bestellen:} Debian~13, mit IPv4 (und möglichst IPv6).
+        Empfehlung: 2~CPU-Kerne, 4~GB Arbeitsspeicher (Mailserver mit Spamfilter
+        braucht etwa 1~GB), Platte 40~GB plus Platz für die Postfächer (bis 5~GB je
+        Postfach). Bei der Bestellung den eigenen \textbf{SSH-Schlüssel} für root
+        hinterlegen.
+  \item \erledigt\textbf{Beim Server-Anbieter} (Kundenmenü) schon jetzt:
+        Reverse-DNS (PTR) von IPv4 und IPv6 auf \cmd{mail.<domain>} setzen und prüfen,
+        ob ausgehender Port~25 gesperrt ist (ggf.\ freischalten lassen). Beides
+        braucht erst der Mailserver, dauert beim Anbieter aber manchmal.
+  \item \erledigt\textbf{Backup-Ziel anlegen}, z.\,B.\ eine Storage-Box mit SSH/SFTP
+        (Port~23). Benutzername und Adresse notieren:
+        \cmd{sftp://u12345@u12345.your-storagebox.de:23/fv-web}.
+  \item \erledigt\textbf{Auf dem eigenen Rechner:} \cmd{bash}, \cmd{ssh}, \cmd{dig}; das
+        Skript holen:
 \begin{befehl}
-./setup-server-fv-web.sh -f kreuzau.env -H 203.0.113.10 -d foerderverein-kf-jf-kreuzau.de -W -c
+curl -fsSLO https://raw.githubusercontent.com/brami/FreiVerein/main/deploy/setup-server-fv-web.sh
+chmod +x setup-server-fv-web.sh
 \end{befehl}
-  \item \textbf{Erstinstallation} mit Administrator-Konto der Webseite und externem
-        Backup-Ziel; legt \pfad{kreuzau.env} an:
+        (oder das Repository klonen; nötig nur für \cmd{-L}).
+  \item \erledigt\textbf{Anmeldung testen:} \cmd{ssh root@203.0.113.10} muss ohne Passwort
+        gelingen.
+\end{enumerate}
+
+\subsubsection*{Phase B -- DNS für die Webseite}
+
+\begin{enumerate}[resume]
+  \item \erledigt Bei SchlundTech in der Zone der Domain anlegen:
 \begin{befehl}
-./setup-server-fv-web.sh -f kreuzau.env -H 203.0.113.10 -d foerderverein-kf-jf-kreuzau.de -W \
+neu.foerderverein-kf-jf-kreuzau.de.   A      203.0.113.10
+neu.foerderverein-kf-jf-kreuzau.de.   AAAA   2001:db8::10      (falls IPv6)
+\end{befehl}
+        Ohne Testnamen stattdessen die Einträge der Hauptdomain (und \cmd{www}) auf den
+        Server setzen. Ein \cmd{AAAA}-Eintrag, der auf eine falsche Adresse zeigt,
+        verhindert das Zertifikat -- im Zweifel weglassen.
+  \item \erledigt Prüfen: \cmd{dig +short A neu.foerderverein-kf-jf-kreuzau.de @1.1.1.1}
+        zeigt \cmd{203.0.113.10}.
+\end{enumerate}
+
+\subsubsection*{Phase C -- Installation}
+
+\begin{enumerate}[resume]
+  \item \erledigt\textbf{Prüflauf} (ändert nichts, legt die Einstellungsdatei noch nicht an):
+\begin{befehl}
+./setup-server-fv-web.sh -f kreuzau.env -H 203.0.113.10 -d neu.foerderverein-kf-jf-kreuzau.de -c
+\end{befehl}
+        Er prüft SSH, freie Ports 80/443 und DNS. Fehler erst beheben.
+  \item \erledigt\textbf{Erstinstallation} mit Administrator-Konto der Webseite und
+        externem Backup-Ziel; legt \pfad{kreuzau.env} an:
+\begin{befehl}
+./setup-server-fv-web.sh -f kreuzau.env -H 203.0.113.10 -d neu.foerderverein-kf-jf-kreuzau.de \
     -n fv-web -a michael.bramer -m adresse@example.org \
     -B sftp://u12345@u12345.your-storagebox.de:23/fv-web
 \end{befehl}
-        Das Skript aktualisiert das System, legt \cmd{fkjs} an (übernimmt die
-        SSH-Schlüssel von root), richtet Firewall, fail2ban, PostgreSQL, Caddy,
-        Dienste und Sicherung ein, testet die Anmeldung als \cmd{fkjs} und härtet erst
-        danach SSH. Dann holt der Server die Anwendung von GitHub und installiert sie.
-  \item \textbf{Ausgaben beachten:}
+        Dauer etwa 10--15 Minuten. Das Skript aktualisiert das System, legt \cmd{fkjs}
+        an (übernimmt die SSH-Schlüssel von root), richtet Firewall, fail2ban,
+        PostgreSQL, Caddy, Dienste, Sicherung und Überwachung ein, testet die
+        Anmeldung als \cmd{fkjs} und härtet erst danach SSH (kein root, keine
+        Passwörter). Dann holt der Server die Anwendung von GitHub und installiert sie.
+  \item \erledigt\textbf{Ausgaben am Ende sichern} (stehen auch in
+        \pfad{logs/setup-<server>-<zeit>.log}):
     \begin{itemize}
-      \item den \textbf{Link zum Setzen des Passworts} für das Administrator-Konto
+      \item \textbf{Link zum Setzen des Passworts} für das Administrator-Konto
             (7 Tage gültig),
-      \item den \textbf{öffentlichen Backup-Schlüssel}: bei der Storage-Box als
-            erlaubten Schlüssel eintragen, sonst schlägt die Sicherung fehl,
-      \item bei privatem Repository den \textbf{Deploy-Schlüssel}: bei GitHub unter
-            \emph{Settings $\rightarrow$ Deploy keys} eintragen (ohne Schreibrecht),
-            dann erneut mit \cmd{-U} aufrufen.
+      \item \textbf{öffentlicher Backup-Schlüssel}: bei der Storage-Box als erlaubten
+            Schlüssel eintragen (Kundenmenü der Storage-Box oder
+            \cmd{ssh-copy-id}-Weg des Anbieters),
+      \item \emph{Zustand}: Ergebnis von \cmd{/health} -- direkt nach der Installation
+            meldet es noch \emph{Noch keine erfolgreiche Datensicherung}.
     \end{itemize}
-  \item \textbf{Passwort der Datensicherung sichern} -- siehe Hinweis in
-        Abschnitt~\ref{sec:sicherung}.
-  \item Mit dem Link Passwort setzen, anmelden, Zwei-Faktor-Anmeldung einrichten.
-  \item In der Verwaltung unter \emph{Einstellungen der Webseite} die \emph{Weitere
-        Antwortadresse} (Vorstand) eintragen; \emph{Stufen} prüfen.
-  \item \textbf{Mailserver} einrichten: Abschnitt~\ref{sec:mail}.
-  \item Vorstandsmitglieder in der Verwaltung anlegen und einladen (siehe
-        Vorstandsanleitung). Solange kein Mailserver eingetragen ist, zeigt die
-        Verwaltung den Einladungslink an; er muss dann selbst weitergegeben werden.
+  \item \erledigt\textbf{Sicherung testen}, nachdem der Schlüssel eingetragen ist:
+\begin{befehl}
+ssh fkjs@neu.foerderverein-kf-jf-kreuzau.de
+sudo fv-web-backup          # endet mit "Sicherung erfolgreich."
+sudo fv-web-restore -t      # Wiederherstellungstest, ändert nichts
+\end{befehl}
+  \item \erledigt\textbf{In den Passwortsafe des Vereins:} Passwort und Ziel der Sicherung
+        (\cmd{sudo grep -E '\^{}(RESTIC\_PASSWORD|RESTIC\_REPOSITORY)=' /etc/fv-web/backup.env}),
+        die Einstellungsdatei \pfad{kreuzau.env}, Zugang zur Storage-Box und zum
+        Kundenmenü des Servers, der SSH-Schlüssel der Betreuung.
+  \item \erledigt\textbf{Zustand prüfen:} \url{https://neu.foerderverein-kf-jf-kreuzau.de/health}
+        zeigt \cmd{\{"status":"ok"\}}; auf dem Server \cmd{sudo fv-web-status}.
 \end{enumerate}
+
+\subsubsection*{Phase D -- Webseite einrichten}
+
+\begin{enumerate}[resume]
+  \item \erledigt Mit dem Link das Passwort setzen, anmelden, \textbf{Zwei-Faktor-Anmeldung}
+        einrichten (Pflicht für den Vorstand).
+  \item \erledigt In der Verwaltung unter \emph{Einstellungen der Webseite}: Name, Slogan,
+        Inhaber, Ansprechpartner, Unterschrift, \emph{Weitere Antwortadresse}
+        (Vorstand), Impressum, Datenschutzerklärung, Nutzungsordnung. \emph{Stufen}
+        prüfen.
+  \item \erledigt\textbf{Inhalte übernehmen} (Seiten, Anhänge aus der bisherigen Webseite).
+  \item \erledigt Vorstandsmitglieder anlegen. Noch \emph{nicht} einladen, solange die
+        Webseite keine Mails verschickt: Die Verwaltung zeigt dann nur den
+        Einladungslink an.
+\end{enumerate}
+
+\subsubsection*{Phase E -- Auf die Hauptdomain umstellen}
+
+\begin{enumerate}[resume]
+  \item \erledigt Einen Tag vorher bei SchlundTech die \textbf{TTL} der A-/AAAA-Einträge
+        der Hauptdomain und von \cmd{www} auf \cmd{300} senken.
+  \item \erledigt Einträge der Hauptdomain und von \cmd{www} auf den neuen Server setzen;
+        ab jetzt ist die alte Webseite nicht mehr erreichbar.
+  \item \erledigt Skript mit der Hauptdomain und \cmd{-W} aufrufen (beides wird in der
+        Einstellungsdatei gespeichert):
+\begin{befehl}
+./setup-server-fv-web.sh -f kreuzau.env -U -d foerderverein-kf-jf-kreuzau.de -W
+\end{befehl}
+        Caddy holt die Zertifikate, die Webseite antwortet unter der Hauptdomain. Alle
+        müssen sich neu anmelden. Den Testnamen soll der Server weiter beantworten
+        und weiterleiten? Dann zusätzlich \cmd{-A neu.foerderverein-kf-jf-kreuzau.de};
+        sonst den DNS-Eintrag des Testnamens löschen.
+  \item \erledigt Prüfen: \url{https://foerderverein-kf-jf-kreuzau.de/health} und
+        \cmd{https://www.\dots} (leitet um).
+\end{enumerate}
+
+\subsubsection*{Phase F -- Mailserver}
+
+\begin{enumerate}[resume]
+  \item \erledigt Mailserver nach Abschnitt~\ref{sec:mail} einrichten (DNS für
+        \cmd{mail.}, Skript mit \cmd{-M -P <betreuung>}, DNS-Einträge aus
+        \cmd{sudo fv-mail dns}, Tests, zuletzt den MX umstellen). Danach verschickt
+        auch die Webseite Mails.
+  \item \erledigt Weitere Domains (Umlaut, Kurzform) nach
+        Abschnitt~\ref{sec:zusatzdomains}.
+\end{enumerate}
+
+\subsubsection*{Phase G -- Abschluss}
+
+\begin{enumerate}[resume]
+  \item \erledigt\textbf{Überwachung} bei einem Dienst eintragen (z.\,B.\ Uptime Kuma,
+        UptimeRobot): \cmd{/health/live} jede Minute, \cmd{/health} alle 5--10 Minuten
+        (Abschnitt~\ref{sec:health}). Optional \cmd{BACKUP\_PING\_URL} für die
+        Sicherung (Abschnitt~\ref{sec:sicherung}).
+  \item \erledigt Vorstandsmitglieder \textbf{einladen}; danach die Mitglieder.
+  \item \erledigt Nach einer Woche: \cmd{sudo fv-web-status}, Sicherungen
+        (\cmd{sudo fv-web-restore -l}), Warteschlange (\cmd{sudo exim -bpc}).
+\end{enumerate}
+
+Das Skript kann jederzeit erneut laufen, z.\,B.\ nach einem Abbruch:
+\cmd{./setup-server-fv-web.sh -f kreuzau.env} setzt fort, was fehlt; jeder Schritt
+prüft, ob er schon erledigt ist.
 
 Protokolle der Einrichtung: lokal \pfad{logs/setup-<server>-<zeit>.log} neben dem
 Skript, auf dem Server \pfad{/var/log/fv-web-setup/}.

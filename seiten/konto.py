@@ -173,7 +173,7 @@ class ZweiFaktorPflichtMiddleware:
     Konto-Seiten (Einrichtung, Abmelden, Passwort) und statische Dateien.
     """
 
-    FREI = ("/konto/", "/static/", "/gesund/")
+    FREI = ("/konto/", "/static/", "/gesund/", "/health")
 
     def __init__(self, get_response):
         self.get_response = get_response

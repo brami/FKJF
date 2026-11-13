@@ -57,6 +57,11 @@ urlpatterns = [
     path("konto/", include("allauth.urls")),
     path("anmelden/", RedirectView.as_view(pattern_name="account_login", query_string=True)),
     path("gesund/", views.gesund, name="gesund"),
+    # Überwachung wie im Wehrkalender: Lebenszeichen und Gesamtzustand (JSON)
+    path("health/live", views.health_live, name="health_live"),
+    path("health/live/", views.health_live),
+    path("health", views.health, name="health"),
+    path("health/", views.health),
     path("ueber/", views.ueber, name="ueber"),
     path("ueber/lizenz.txt", views.lizenztext, name="lizenz_programm"),
     path("ueber/lizenz-dokumentation.txt", views.lizenztext, {"teil": "doku"}, name="lizenz_doku"),

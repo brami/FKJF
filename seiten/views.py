@@ -1,5 +1,5 @@
 from django.db import connection
-from django.http import FileResponse, Http404, HttpResponse
+from django.http import FileResponse, Http404, HttpResponse, JsonResponse
 from django.shortcuts import get_object_or_404, render
 from django.views.decorators.http import require_GET
 
@@ -81,6 +81,65 @@ def gesund(request):
     antwort = HttpResponse("ok", content_type="text/plain")
     antwort["Cache-Control"] = "no-store"
     return antwort
+
+
+def _json_ohne_cache(daten, status=200):
+    antwort = JsonResponse(daten, status=status, json_dumps_params={"ensure_ascii": False})
+    antwort["Cache-Control"] = "no-store"
+    return antwort
+
+
+def health_live(request):
+    """Lebenszeichen für die Überwachung: Die Anwendung antwortet (ohne Datenbank)."""
+    return _json_ohne_cache({"status": "ok"})
+
+
+def health(request):
+    """Gesamtzustand für die Überwachung (JSON, ohne Anmeldung).
+
+    200 {"status": "ok"} oder 503 {"status": "warning", "probleme": [...]}.
+    Geprüft werden Datenbank und Newsletter-Dienst sowie – aus der Statusdatei, die
+    fv-web-status als root alle 5 Minuten schreibt – Dienste, Datensicherung,
+    Speicherplatz, Zertifikate und Mailserver. „hinweise“ ändern den Status nicht.
+    """
+    import json
+    import time
+
+    from django.conf import settings
+
+    from . import newsletter
+
+    probleme, hinweise = [], []
+    try:
+        with connection.cursor() as c:
+            c.execute("SELECT 1")
+        db = True
+    except Exception:
+        db = False
+        probleme.append("Datenbank nicht erreichbar")
+    if db and not newsletter.dienst_laeuft():
+        probleme.append("Newsletter-Versand meldet sich nicht")
+
+    datei = settings.FV_STATUS_DATEI
+    if datei:
+        try:
+            with open(datei, encoding="utf-8") as f:
+                status = json.load(f)
+            alter = time.time() - float(status.get("zeit", 0))
+        except (OSError, ValueError, TypeError):
+            status, alter = {}, None
+        if alter is None or alter > settings.FV_STATUS_MAX_ALTER:
+            probleme.append("Serverprüfung (fv-web-status) liefert keine aktuellen Werte")
+        else:
+            probleme += [str(p) for p in status.get("probleme", [])]
+            hinweise += [str(h) for h in status.get("hinweise", [])]
+
+    daten = {"status": "warning" if probleme else "ok"}
+    if probleme:
+        daten["probleme"] = probleme
+    if hinweise:
+        daten["hinweise"] = hinweise
+    return _json_ohne_cache(daten, status=503 if probleme else 200)
 
 
 def csrf_fehler(request, reason=""):

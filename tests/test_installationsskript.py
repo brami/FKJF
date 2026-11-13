@@ -74,8 +74,9 @@ def _funktion(text, name):
 
 @pytest.mark.skipif(subprocess.run(["which", "caddy"], capture_output=True).returncode != 0,
                     reason="caddy nicht installiert")
+@pytest.mark.parametrize("mail", [False, True])
 @pytest.mark.parametrize("modus", ["app", "platzhalter"])
-def test_caddyfile_gueltig_und_mit_wartungsseite(tmp_path, modus):
+def test_caddyfile_gueltig_und_mit_wartungsseite(tmp_path, modus, mail):
     """Die von fv-web-update erzeugte Caddy-Konfiguration ist gültig (echtes caddy validate);
     im Anwendungsbetrieb zeigt sie bei 502/503/504 die Wartungsseite."""
     funktionen_text = _funktion(UPDATE, "wartungsseite") + _funktion(UPDATE, "write_caddyfile")
@@ -86,6 +87,7 @@ def test_caddyfile_gueltig_und_mit_wartungsseite(tmp_path, modus):
     skript = f"""
 set -euo pipefail
 DATA={tmp_path}/data; DOMAIN=foerderverein.example; WITH_WWW=1; ACME_EMAIL=a@example.org
+MAIL_HOST={"mail.foerderverein.example" if mail else '""'}; MAIL_WEB={"mta-sts.foerderverein.example" if mail else '""'}
 log() {{ echo "$*"; }}
 systemctl() {{ :; }}
 {funktionen_text}
@@ -103,3 +105,115 @@ write_caddyfile {modus}
         assert "wird gerade aktualisiert" in seite
     else:
         assert "handle_errors" not in caddyfile
+    if mail:
+        assert "http://mail.foerderverein.example {" in caddyfile
+        assert "/var/lib/fv-mail/acme" in caddyfile
+        assert "mta-sts.foerderverein.example {" in caddyfile
+        assert ("/.well-known/autoconfig/*" in caddyfile) == (modus == "app")
+    else:
+        assert "fv-mail" not in caddyfile
+
+
+# ------------------------------------------------------------- Mailserver (-M)
+
+def _heredoc(text, marke):
+    m = re.search(rf"<<'{marke}'\n(.*?)\n{marke}\n", text, re.S)
+    assert m, marke
+    return m.group(1)
+
+
+MAIL = zwischen(REMOTE, "phase_mail() {\n", "# ------------------------------------------------------------ Phase summary")
+
+
+def test_mail_phase_eingebunden():
+    assert "M) WITH_MAIL=1" in TEXT and "P) POSTMASTER=" in TEXT
+    assert "mail)    phase_mail ;;" in REMOTE
+    assert 'run_remote mail <<<"$REMOTE_SCRIPT"' in TEXT
+    for paket in ("exim4-daemon-heavy", "dovecot-pgsql", "dovecot-sieve", "dovecot-lmtpd",
+                  "dovecot-managesieved", "rspamd", "redis-server", "unbound", "certbot"):
+        assert paket in MAIL, paket
+
+
+def test_mail_rechte_in_update_und_phase_gleich():
+    """Die Leserechte auf die Sichten stehen in fv-web-update und in phase_mail gleich."""
+    rechte = _heredoc(_funktion(REMOTE, "mail_rechte_sql"), "SQL")
+    assert rechte in UPDATE
+    for sicht in ("dovecot_benutzer", "exim_adressen", "exim_verteiler", "exim_absender",
+                  "exim_plus_gesperrt", "mail_archive"):
+        assert sicht in rechte
+
+
+def test_datensicherung_mit_postfaechern():
+    assert "/var/vmail" in BACKUP and "/etc/fv-mail" in BACKUP
+
+
+def test_mail_konfigurationen_ohne_platzhalterreste():
+    for marke in ("EXIM", "DOVECOT", "FILTER"):
+        text = _heredoc(MAIL, marke)
+        assert set(re.findall(r"@[A-Z_]+@", text)) <= {"@DOMAIN@", "@HOST@", "@VMAIL_UID@",
+                                                         "@QUOTA@", "@LISTEN@"}, marke
+    dovecot = _heredoc(MAIL, "DOVECOT")
+    assert "dovecot_config_version = 2.4" in dovecot
+    assert "passwort IS NOT NULL" in dovecot          # Postfach ohne Passwort: Zustellung ja, Anmeldung nein
+    assert "autoexpunge = 90d" in dovecot
+
+
+def test_fv_mail_werkzeug_shellcheck(tmp_path):
+    datei = tmp_path / "fv-mail"
+    datei.write_text(_heredoc(MAIL, "FVMAIL"))
+    r = subprocess.run(["bash", "-n", str(datei)], capture_output=True, text=True)
+    assert r.returncode == 0, r.stderr
+    if subprocess.run(["which", "shellcheck"], capture_output=True).returncode == 0:
+        r = subprocess.run(["shellcheck", "-S", "warning", "-s", "bash", str(datei)],
+                           capture_output=True, text=True)
+        assert r.returncode == 0, r.stdout
+
+
+EXIM_DA = subprocess.run(["which", "exim"], capture_output=True).returncode == 0
+
+
+def _exim_konfig(tmp_path):
+    makros = tmp_path / "fv-makros.conf"
+    makros.write_text("FV_DOMAIN = verein.example\nFV_HOST = mail.verein.example\n"
+                      "FV_DKIM_SELEKTOR = fv2026\nFV_SRS_GEHEIMNIS = geheim\n")
+    konfig = tmp_path / "exim4.conf"
+    konfig.write_text(_heredoc(MAIL, "EXIM").replace("/etc/exim4/fv-makros.conf", str(makros)))
+    return konfig
+
+
+@pytest.mark.skipif(not EXIM_DA, reason="exim nicht installiert")
+def test_exim_konfiguration_gueltig(tmp_path):
+    konfig = _exim_konfig(tmp_path)
+    r = subprocess.run(["exim", "-C", str(konfig), "-bV"], capture_output=True, text=True)
+    assert r.returncode == 0, r.stdout + r.stderr
+    # SRS hin und zurück mit dem Geheimnis aus den Makros
+    r = subprocess.run(["exim", "-C", str(konfig), "-be",
+                        "${if inbound_srs{${local_part:${srs_encode{geheim}{a@b.example}{verein.example}}}}"
+                        "{geheim}{$srs_recipient}{nein}}"], capture_output=True, text=True)
+    assert r.stdout.strip() == "a@b.example", r.stdout + r.stderr
+
+
+@pytest.mark.skipif(not EXIM_DA, reason="exim nicht installiert")
+def test_exim_relay_und_anmeldung(tmp_path):
+    """Ohne Datenbank prüfbar: kein offenes Relay; Mailprogramm-Ports nur mit Anmeldung."""
+    konfig = _exim_konfig(tmp_path)
+
+    def sitzung(port, ziel):
+        r = subprocess.run(["exim", "-C", str(konfig), "-bh", "192.0.2.10", "-oMi", f"192.0.2.1.{port}"],
+                           input=f"HELO t.example\r\nMAIL FROM:<x@extern.example>\r\nRCPT TO:<{ziel}>\r\nQUIT\r\n",
+                           capture_output=True, text=True)
+        return [z for z in r.stdout.splitlines() if re.match(r"^\d{3} ", z)]
+
+    assert "550 Weiterleitung nicht erlaubt" in sitzung(25, "a@anders.example")
+    assert "550 Bitte zuerst anmelden" in sitzung(587, "a@anders.example")
+    assert "550 Unbekannte Adresse" in sitzung(25, "fv-archiv+vorstand@verein.example")
+
+
+@pytest.mark.skipif(subprocess.run(["which", "rspamadm"], capture_output=True).returncode != 0,
+                    reason="rspamd nicht installiert")
+def test_rspamd_force_actions_syntax(tmp_path):
+    datei = tmp_path / "force_actions.conf"
+    m = re.search(r"cat > /etc/rspamd/local.d/force_actions.conf <<'RSPAMD'\n(.*?)\nRSPAMD\n", MAIL, re.S)
+    assert m
+    datei.write_text(m.group(1))
+    assert 'action = "reject"' in m.group(1) and "MIME_BAD_EXTENSION" in m.group(1)

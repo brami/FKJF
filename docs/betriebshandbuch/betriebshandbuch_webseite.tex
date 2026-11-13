@@ -199,6 +199,37 @@ Das Skript \pfad{deploy/setup-server-fv-web.sh} läuft auf dem eigenen Rechner u
 richtet den Server per SSH ein. Es kann beliebig oft erneut laufen; jeder Schritt
 prüft, ob er schon erledigt ist. \cmd{-h} zeigt alle Optionen.
 
+\subsection{Einstellungsdatei}\label{sec:einstellungsdatei}
+
+Alle dauerhaften Einstellungen eines Servers -- Server, Domain, www, Mailserver,
+Betreuungsadresse, Backup-Ziel, Admin-Benutzer, SSH-Port -- stehen in einer
+\textbf{Einstellungsdatei} auf dem eigenen Rechner, z.\,B.\ \pfad{kreuzau.env}. Das
+Skript liest sie mit \cmd{-f}, übernimmt Änderungen aus den übrigen Optionen und
+schreibt sie zurück; geänderte Werte zeigt es an. Spätere Aufrufe brauchen dann nur
+noch \cmd{-f} und das, was diesmal anders sein soll. So geht keine Einstellung
+verloren, und jeder Aufruf richtet den Server gleich ein.
+
+\begin{befehl}
+SERVER="203.0.113.10"
+DOMAIN="foerderverein-kf-jf-kreuzau.de"
+WITH_WWW="1"
+WITH_MAIL="1"
+MAIL_HOST=""                       (leer: mail.<domain>)
+POSTMASTER="betreuung@example.org"
+BACKUP_REPO="sftp://u12345@u12345.your-storagebox.de:23/fv-web"
+…
+\end{befehl}
+
+\begin{itemize}
+  \item Gespeichert werden \cmd{-H -d -W -M -X -P -e -B -R -u -n -t -p -S}. Einmalige
+        Optionen (\cmd{-c -U -N -L -r -a -m -y}) nicht.
+  \item Etwas abschalten (z.\,B.\ www): in der Datei auf \cmd{0} setzen.
+  \item Die Datei enthält keine Passwörter. Sie gehört zu den Unterlagen der Betreuung
+        (Passwortsafe oder Projektablage), nicht ins öffentliche Repository.
+  \item Auch ohne Datei entfernt das Skript ein eingerichtetes www nicht, nur weil
+        \cmd{-W} fehlt.
+\end{itemize}
+
 \subsection{Voraussetzungen}
 
 \begin{itemize}
@@ -214,12 +245,12 @@ prüft, ob er schon erledigt ist. \cmd{-h} zeigt alle Optionen.
 \begin{enumerate}
   \item \textbf{Nur prüfen} (ändert nichts): SSH, belegte Ports 80/443, DNS.
 \begin{befehl}
-./setup-server-fv-web.sh -H 203.0.113.10 -d foerderverein-kf-jf-kreuzau.de -W -c
+./setup-server-fv-web.sh -f kreuzau.env -H 203.0.113.10 -d foerderverein-kf-jf-kreuzau.de -W -c
 \end{befehl}
   \item \textbf{Erstinstallation} mit Administrator-Konto der Webseite und externem
-        Backup-Ziel:
+        Backup-Ziel; legt \pfad{kreuzau.env} an:
 \begin{befehl}
-./setup-server-fv-web.sh -H 203.0.113.10 -d foerderverein-kf-jf-kreuzau.de -W \
+./setup-server-fv-web.sh -f kreuzau.env -H 203.0.113.10 -d foerderverein-kf-jf-kreuzau.de -W \
     -n fv-web -a michael.bramer -m adresse@example.org \
     -B sftp://u12345@u12345.your-storagebox.de:23/fv-web
 \end{befehl}
@@ -316,10 +347,10 @@ dig +short -x 203.0.113.10 @1.1.1.1
 \begin{enumerate}[resume]
   \item \erledigt\textbf{Skript mit \cmd{-M} aufrufen.} Auf einem schon eingerichteten Server
         einmal \emph{ohne} \cmd{-U}, damit auch die Datensicherung die Postfächer
-        aufnimmt; später genügt \cmd{-U -M}.
+        aufnimmt. \cmd{-M} und \cmd{-P} landen in der Einstellungsdatei; danach genügt
+        \cmd{-f kreuzau.env -U}.
 \begin{befehl}
-./setup-server-fv-web.sh -H 203.0.113.10 -d foerderverein-kf-jf-kreuzau.de -W \
-    -M -P betreuung@example.org
+./setup-server-fv-web.sh -f kreuzau.env -M -P betreuung@example.org
 \end{befehl}
         Das Skript installiert Exim, Dovecot, rspamd, Redis, unbound und certbot,
         holt das Zertifikat für \cmd{mail.<domain>}, erzeugt den DKIM-Schlüssel, öffnet
@@ -331,7 +362,7 @@ dig +short -x 203.0.113.10 @1.1.1.1
       \item \emph{WARNUNG: Ausgehender Port 25 scheint gesperrt} -- Anbieter fragen.
       \item \emph{HINWEIS: \dots\ zeigt noch nicht auf \dots\ – kein Zertifikat} -- dann
             gilt vorläufig ein selbst signiertes Zertifikat; nach dem DNS-Eintrag das
-            Skript noch einmal mit \cmd{-U -M} aufrufen.
+            Skript noch einmal mit \cmd{-f kreuzau.env -U} aufrufen.
       \item \emph{FEHLER: Dovecot-Konfiguration ungültig} -- die bisherige bleibt aktiv;
             Meldung notieren und an die Entwicklung geben (\cmd{sudo doveconf -n -c
             /etc/dovecot/dovecot.conf.neu}).
@@ -387,7 +418,7 @@ _25._tcp.mail.foerderverein-kf-jf-kreuzau.de.  TLSA  3 1 1 <wert aus fv-mail dns
         weiterverwendet). Wird der Schlüssel doch einmal ausgetauscht, \emph{zuerst} den
         neuen TLSA-Eintrag \emph{zusätzlich} setzen und erst nach einem Tag den alten
         entfernen.
-  \item \erledigt\textbf{Skript noch einmal} mit \cmd{-U -M} aufrufen. Jetzt richtet es
+  \item \erledigt\textbf{Skript noch einmal} mit \cmd{-f kreuzau.env -U} aufrufen. Jetzt richtet es
         MTA-STS ein (\cmd{https://mta-sts.<domain>}) und holt ggf.\ das Zertifikat.
   \item \erledigt\textbf{Prüfen:}
 \begin{befehl}
@@ -460,7 +491,7 @@ _dmarc.foerderverein-kf-jf-kreuzau.de.  TXT  "v=DMARC1; p=quarantine; rua=mailto
         Nach weiteren Wochen ohne Auffälligkeiten ggf.\ \cmd{p=reject}.
   \item \erledigt\textbf{MTA-STS scharf schalten:} auf dem Server in
         \pfad{/etc/fv-mail/mail.env} \cmd{MTA\_STS\_MODE="enforce"} setzen, dann das
-        Skript mit \cmd{-U -M}. Es erneuert Richtlinie und Kennung; den neuen
+        Skript mit \cmd{-f kreuzau.env -U}. Es erneuert Richtlinie und Kennung; den neuen
         \cmd{\_mta-sts}-Eintrag aus \cmd{sudo fv-mail dns} bei SchlundTech übernehmen.
   \item \erledigt\textbf{TTL zurück} auf \cmd{3600} für den MX-Eintrag.
   \item \erledigt\textbf{Reputation prüfen:} \url{https://www.spamhaus.org/lookup/} und
@@ -528,7 +559,7 @@ eine Wartungsseite, die sich alle 30~Sekunden selbst neu lädt. Der Mailserver l
 während des Updates weiter.
 
 Änderungen an der Konfiguration des Mailservers (neue Fassung des
-Einrichtungsskripts) werden mit \cmd{./setup-server-fv-web.sh \dots\ -U -M}
+Einrichtungsskripts) werden mit \cmd{./setup-server-fv-web.sh -f kreuzau.env -U}
 eingespielt.
 
 \subsection{Weitere Möglichkeiten}
@@ -592,7 +623,7 @@ FV\_MAIL\_ABSENDER         & Absenderadresse, z.\,B.\ \cmd{webmaster@foerdervere
                              den Namen ergänzt die Webseite \\
 FV\_MAIL\_DOMAIN, FV\_MAIL\_SERVER & Domain der Vereinsadressen und Name des Mailservers
                              (setzt \cmd{-M}) \\
-FV\_MAIL\_QUOTA\_GB        & Speichergrenze je Postfach in GB (5); nach Änderung \cmd{-U -M} \\
+FV\_MAIL\_QUOTA\_GB        & Speichergrenze je Postfach in GB (5); nach Änderung Skript mit \cmd{-U} \\
 FV\_MAIL\_LOESCHFRIST\_TAGE, \_VORWARNUNG\_TAGE, \_SPERRFRIST\_TAGE & Löschung gesperrter
                              Postfächer (90), Erinnerung vorher (14), Sperre der Adresse (365) \\
 FV\_ADMINS                 & Adressen (durch Komma getrennt), die bei Programmfehlern eine
@@ -722,8 +753,8 @@ ssh root@<neuer-server>
 install -d -m 750 /etc/fv-web
 ( umask 077; echo 'RESTIC_PASSWORD=<aus dem Passwortsafe>' > /etc/fv-web/backup.env )
 \end{befehl}
-  \item Einrichtungsskript wie bei der Erstinstallation, mit demselben \cmd{-B}, aber
-        ohne \cmd{-a}/\cmd{-m} und noch \textbf{ohne} \cmd{-M}. Den neuen öffentlichen
+  \item Einrichtungsskript mit der Einstellungsdatei, aber
+        vorerst mit \cmd{WITH\_MAIL="0"} und neuer \cmd{SERVER}-Adresse. Den neuen öffentlichen
         Backup-Schlüssel bei der Storage-Box eintragen.
   \item Sicherungen anzeigen und den letzten Stand \textbf{vor dem Ausfall} einspielen:
 \begin{befehl}
@@ -745,8 +776,9 @@ sudo bash -c 'set -a; . /etc/fv-web/backup.env; restic -o sftp.args="-i /root/.s
 sudo cat /root/alt/etc/fv-web/env
 \end{befehl}
   \item \textbf{Mailserver:} \pfad{/etc/fv-mail} (DKIM-Schlüssel, Geheimnisse) und
-        \pfad{/etc/letsencrypt} aus \pfad{/root/alt} an ihren Platz kopieren, dann das
-        Skript mit \cmd{-U -M} aufrufen. So bleiben DKIM- und TLSA-Einträge im DNS
+        \pfad{/etc/letsencrypt} aus \pfad{/root/alt} an ihren Platz kopieren, dann
+        in der Einstellungsdatei wieder \cmd{WITH\_MAIL="1"} setzen und das Skript mit
+        \cmd{-f kreuzau.env -U} aufrufen. So bleiben DKIM- und TLSA-Einträge im DNS
         gültig. Danach die Postfächer zurücklegen:
 \begin{befehl}
 sudo rsync -a /root/alt/var/vmail/ /var/vmail/

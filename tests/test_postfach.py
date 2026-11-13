@@ -213,12 +213,14 @@ def test_dovecot_sicht():
     with connection.cursor() as c:
         c.execute("SELECT benutzer, passwort, aktiv FROM dovecot_benutzer ORDER BY benutzer")
         zeilen = c.fetchall()
-    assert [z[0] for z in zeilen] == ["vera.vorstand@verein.example"]
-    benutzer, passwort, aktiv = zeilen[0]
+    # Postfächer ohne Argon2-Passwort stehen mit passwort NULL darin (Zustellung ja, Anmeldung nein)
+    assert [z[0] for z in zeilen] == ["otto@verein.example", "vera.vorstand@verein.example"]
+    assert zeilen[0][1] is None
+    benutzer, passwort, aktiv = zeilen[1]
     assert aktiv is True and passwort == dovecot_form(vera.password)
     assert nacl.pwhash.argon2id.verify(passwort[len("{ARGON2ID}"):].encode(), PW.encode())
     vera.is_active = False
     vera.save()
     with connection.cursor() as c:
-        c.execute("SELECT aktiv FROM dovecot_benutzer")
+        c.execute("SELECT aktiv FROM dovecot_benutzer WHERE benutzer LIKE 'vera%'")
         assert c.fetchone()[0] is False

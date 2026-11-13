@@ -17,6 +17,12 @@
 #    restic             tägliche, verschlüsselte Datensicherung
 #    fv-web-update      holt die Anwendung von GitHub und installiert sie –
 #                       auch ohne dieses Skript: ssh … sudo fv-web-update
+#  Mit -M zusätzlich der Mailserver
+#    Exim               SMTP (25, 465, 587), Adressen/Verteiler aus der Datenbank
+#    Dovecot            IMAP (993), Sieve (4190), Speichergrenze, Archive der Verteiler
+#    rspamd, Redis      Spam, Greylisting, unzulässige Anhänge
+#    unbound            eigener DNS-Resolver mit DNSSEC; certbot für mail.<domain>
+#    fv-mail            Abgleich mit der Webseite: sudo fv-mail status | dns | sync
 #
 #  Verzeichnisse
 #    /srv/fv-web/releases/<zeit>-<commit> installierte Versionen (die letzten 3)
@@ -28,6 +34,8 @@
 #    /var/lib/fv-web/static               CSS, JavaScript, Editor (liefert Caddy aus)
 #    /var/lib/fv-web/mails                E-Mails, solange kein Mailserver eingetragen ist
 #    /var/backups/fv-web                  Datenbank-Dumps (7 Tage)
+#    /var/vmail                           Postfächer und Archive (mit -M)
+#    /etc/fv-mail                         Mailserver: Einstellungen, DKIM, Zertifikat (mit -M)
 #
 #  Was das Skript macht
 #    1. Verbindung, Ports 80/443 (anderer Webserver?) und DNS prüfen
@@ -82,6 +90,9 @@ UPDATE_ONLY=0
 NO_APP=0
 APP_ADMIN=""
 APP_ADMIN_MAIL=""
+WITH_MAIL=0
+MAIL_HOST="${MAIL_HOST:-}"                  # leer: mail.<domain>
+POSTMASTER=""
 
 usage() {
   cat <<HILFE
@@ -107,6 +118,13 @@ Anwendung:
   -m <e-mail>     z. B. -a michael.bramer -m adresse@example.org. Ausgegeben wird
                   ein Link zum Setzen des Passworts (7 Tage gültig).
 
+Mailserver:
+  -M              Mailserver einrichten bzw. aktualisieren (Exim, Dovecot, rspamd);
+                  Rechnername mail.<domain> (anders: MAIL_HOST=… vor dem Aufruf).
+                  Braucht die installierte Anwendung; mit -U nur Anwendung + Mail.
+  -P <e-mail>     Betreuung: Ziel für postmaster@, abuse@, root@ …
+                  (Standard: erste Adresse aus FV_ADMINS)
+
 Optional:
   -W              www.<domain> zusätzlich einrichten (leitet auf <domain> um)
   -e <email>      Kontakt-E-Mail für die Zertifikatsstelle (nicht nötig)
@@ -125,7 +143,7 @@ Optional:
 HILFE
 }
 
-while getopts ":H:d:r:R:a:m:e:B:u:n:t:p:LWUNcSyh" opt; do
+while getopts ":H:d:r:R:a:m:e:B:u:n:t:p:P:LWUNMcSyh" opt; do
   case "$opt" in
     H) SERVER="$OPTARG" ;;
     d) DOMAIN="$OPTARG" ;;
@@ -141,6 +159,8 @@ while getopts ":H:d:r:R:a:m:e:B:u:n:t:p:LWUNcSyh" opt; do
     t) TIMEZONE="$OPTARG" ;;
     p) SSH_PORT="$OPTARG" ;;
     W) WITH_WWW=1 ;;
+    M) WITH_MAIL=1 ;;
+    P) POSTMASTER="$OPTARG" ;;
     U) UPDATE_ONLY=1 ;;
     N) NO_APP=1 ;;
     c) CHECK_ONLY=1 ;;
@@ -166,6 +186,11 @@ if [[ -n "$APP_ADMIN$APP_ADMIN_MAIL" ]]; then
 fi
 [[ $UPDATE_ONLY -eq 1 && $NO_APP -eq 1 ]] && { echo "-U und -N schließen sich aus." >&2; exit 2; }
 [[ $LOCAL_UPLOAD -eq 1 && $NO_APP -eq 1 ]] && { echo "-L und -N schließen sich aus." >&2; exit 2; }
+MAIL_HOST="${MAIL_HOST:-mail.$DOMAIN}"
+[[ "$MAIL_HOST" =~ ^[a-z0-9]([a-z0-9.-]*[a-z0-9])?$ && "$MAIL_HOST" == *.* ]] \
+  || { echo "Ungültiger Mail-Rechnername: $MAIL_HOST" >&2; exit 2; }
+[[ -z "$POSTMASTER" || "$POSTMASTER" =~ ^[^@[:space:]\"\$\`]+@[^@[:space:]\"\$\`]+\.[^@[:space:]\"\$\`]+$ ]] \
+  || { echo "Ungültige E-Mail-Adresse für -P: $POSTMASTER" >&2; exit 2; }
 for v in "$ACME_EMAIL" "$BACKUP_REPO" "$TIMEZONE" "$NEW_HOSTNAME" "$REPO_URL"; do
   [[ "$v" != *[\"\$\`\\[:space:]]* ]] || { echo "Unzulässige Zeichen in einer Option: $v" >&2; exit 2; }
 done
@@ -221,6 +246,7 @@ SSH_OPTS=(-o BatchMode=yes -o ConnectTimeout=10 -o ServerAliveInterval=30
 MODE="Einrichtung"
 [[ $UPDATE_ONLY -eq 1 ]] && MODE="nur Anwendung"
 [[ $CHECK_ONLY -eq 1 ]] && MODE="nur Prüfung"
+[[ $WITH_MAIL -eq 1 ]] && MODE="$MODE + Mailserver ($MAIL_HOST)"
 log "Start ($MODE)"
 log "Server: $SERVER | Domain: $DOMAIN$([[ $WITH_WWW -eq 1 ]] && echo " + www.$DOMAIN") | Admin: $ADMIN_USER | Zeitzone: $TIMEZONE | Hostname: ${NEW_HOSTNAME:-unverändert}"
 log "Lokales Protokoll: $LOCAL_LOG"
@@ -356,9 +382,9 @@ fi
 REMOTE_TAR=""
 run_remote() {  # $1 = Phase, Skript kommt über stdin
   local envs
-  envs=$(printf 'PHASE=%q ADMIN_USER=%q TIMEZONE=%q NEW_HOSTNAME=%q DOMAIN=%q WITH_WWW=%q ACME_EMAIL=%q BACKUP_REPO=%q STAMP=%q SSH_PORT=%q REPO_URL=%q REPO_URL_DEFAULT=%q GIT_REF=%q NO_APP=%q LOCAL_UPLOAD=%q REMOTE_TAR=%q APP_COMMIT=%q APP_DESC=%q APP_ADMIN=%q APP_ADMIN_MAIL=%q' \
+  envs=$(printf 'PHASE=%q ADMIN_USER=%q TIMEZONE=%q NEW_HOSTNAME=%q DOMAIN=%q WITH_WWW=%q ACME_EMAIL=%q BACKUP_REPO=%q STAMP=%q SSH_PORT=%q REPO_URL=%q REPO_URL_DEFAULT=%q GIT_REF=%q NO_APP=%q LOCAL_UPLOAD=%q REMOTE_TAR=%q APP_COMMIT=%q APP_DESC=%q APP_ADMIN=%q APP_ADMIN_MAIL=%q WITH_MAIL=%q MAIL_HOST=%q POSTMASTER=%q' \
     "$1" "$ADMIN_USER" "$TIMEZONE" "$NEW_HOSTNAME" "$DOMAIN" "$WITH_WWW" "$ACME_EMAIL" "$BACKUP_REPO" "$STAMP" "$SSH_PORT" \
-    "$REPO_URL" "$REPO_URL_DEFAULT" "$GIT_REF" "$NO_APP" "$LOCAL_UPLOAD" "$REMOTE_TAR" "$APP_COMMIT" "$APP_DESC" "$APP_ADMIN" "$APP_ADMIN_MAIL")
+    "$REPO_URL" "$REPO_URL_DEFAULT" "$GIT_REF" "$NO_APP" "$LOCAL_UPLOAD" "$REMOTE_TAR" "$APP_COMMIT" "$APP_DESC" "$APP_ADMIN" "$APP_ADMIN_MAIL" "$WITH_MAIL" "$MAIL_HOST" "$POSTMASTER")
   # shellcheck disable=SC2029  # Variablen sollen lokal expandiert werden
   ssh "${SSH_OPTS[@]}" "$TARGET" "$SUDO env $envs bash -s"
 }
@@ -636,7 +662,8 @@ EOF
 # fv-web-backup – Datensicherung der Webseite (angelegt von setup-server-fv-web.sh)
 # Täglich über fv-web-backup.timer; manuell: sudo fv-web-backup
 #  1. Datenbank fvweb als pg_dump nach /var/backups/fv-web (BACKUP_LOCAL_DAYS Tage)
-#  2. restic: Dump, Anhänge (/var/lib/fv-web/private) und /etc/fv-web verschlüsselt
+#  2. restic: Dump, Anhänge (/var/lib/fv-web/private), /etc/fv-web und – mit Mailserver –
+#     /var/vmail, /etc/fv-mail, /etc/letsencrypt verschlüsselt
 #     nach RESTIC_REPOSITORY (BACKUP_KEEP_DAYS tägliche, BACKUP_KEEP_MONTHS monatliche Stände)
 set -Eeuo pipefail
 DIR=/var/backups/fv-web; KEY=/root/.ssh/fv-web-backup; BENV=/etc/fv-web/backup.env
@@ -662,7 +689,10 @@ R=(restic); [[ "$RESTIC_REPOSITORY" == sftp:* ]] && R+=(-o "sftp.args=-i $KEY -o
 rc=0; "${R[@]}" cat config >/dev/null 2>&1 || rc=$?
 if [[ $rc -eq 10 ]]; then log "Repository wird angelegt."; "${R[@]}" init
 elif [[ $rc -ne 0 ]]; then log "FEHLER: Backup-Ziel nicht erreichbar (restic Exit-Code $rc)."; false; fi
-"${R[@]}" backup --quiet --host fv-web --tag fv-web "$f" /var/lib/fv-web/private /etc/fv-web
+# mit Mailserver auch Postfächer, Archive, DKIM-Schlüssel und Zertifikat (Schlüssel für DANE)
+ZIELE=("$f" /var/lib/fv-web/private /etc/fv-web)
+for d in /var/vmail /etc/fv-mail /etc/letsencrypt; do [[ -d "$d" && -e /etc/fv-mail/mail.env ]] && ZIELE+=("$d"); done
+"${R[@]}" backup --quiet --host fv-web --tag fv-web "${ZIELE[@]}"
 "${R[@]}" forget --quiet --host fv-web --keep-daily "$(getkv BACKUP_KEEP_DAYS)" --keep-monthly "$(getkv BACKUP_KEEP_MONTHS)" --prune
 [[ "$(date +%u)" == 7 ]] && "${R[@]}" check --read-data-subset=5%
 log "Gesichert in $RESTIC_REPOSITORY ($("${R[@]}" snapshots --host fv-web --json | jq length) Stände)"
@@ -876,6 +906,8 @@ DEFAULT_REF="$(getkv "$DENV" DEFAULT_REF)"
 DOMAIN="$(getkv "$DENV" DOMAIN)"
 WITH_WWW="$(getkv "$DENV" WITH_WWW)"
 ACME_EMAIL="$(getkv "$DENV" ACME_EMAIL)"
+MAIL_HOST="$(getkv "$DENV" MAIL_HOST || true)"   # nur mit Mailserver (-M)
+MAIL_WEB="$(getkv "$DENV" MAIL_WEB || true)"     # z. B. mta-sts.<domain>, wenn DNS stimmt
 
 log()  { printf '%s [update] %s\n' "$(date '+%F %T')" "$*"; }
 step() { printf '\n%s [update] ===== %s =====\n' "$(date '+%F %T')" "$*"; }
@@ -942,6 +974,15 @@ $DOMAIN {
 		}
 	}
 CADDY
+    if [[ "$1" == app && -n "$MAIL_HOST" ]]; then
+      cat <<'CADDY'
+	# Einstellungen für Thunderbird & Co. (Mailserver)
+	handle_path /.well-known/autoconfig/* {
+		root * /var/lib/fv-mail/www/autoconfig
+		file_server
+	}
+CADDY
+    fi
     if [[ "$1" == app ]]; then
       cat <<'CADDY'
 	# Mehrere Anhänge à 20 MB in einem Formular
@@ -979,6 +1020,13 @@ CADDY
     fi
     if [[ "$WITH_WWW" == 1 ]]; then
       printf '\nwww.%s {\n\tredir https://%s{uri} permanent\n}\n' "$DOMAIN" "$DOMAIN"
+    fi
+    if [[ -n "$MAIL_HOST" ]]; then
+      # Zertifikat des Mailservers: certbot legt die Antwort in /var/lib/fv-mail/acme ab
+      printf '\nhttp://%s {\n\thandle /.well-known/acme-challenge/* {\n\t\troot * /var/lib/fv-mail/acme\n\t\tfile_server\n\t}\n\thandle {\n\t\tredir https://%s{uri}\n\t}\n}\n' "$MAIL_HOST" "$DOMAIN"
+    fi
+    if [[ " $MAIL_WEB " == *" mta-sts.$DOMAIN "* ]]; then
+      printf '\nmta-sts.%s {\n\timport sicherheit\n\troot * /var/lib/fv-mail/www/mta-sts\n\tfile_server\n}\n' "$DOMAIN"
     fi
   } > "$tmp"
   if caddy validate --adapter caddyfile --config "$tmp" >/dev/null 2>&1; then
@@ -1075,15 +1123,26 @@ installiere() {  # installiere <tar.gz> <commit> <beschreibung>
   step "Datenbank migrieren, statische Dateien"
   manage_in "$rel" migrate --noinput
   manage_in "$rel" createcachetable
-  # Mailserver: Leserecht nur auf die Sicht mit Vereinsadressen und Passwort-Hashes
-  runuser -u postgres -- psql -d fvweb -qtAc "
-    DO \$\$ BEGIN
-      IF EXISTS (SELECT FROM pg_roles WHERE rolname = 'dovecot')
-         AND EXISTS (SELECT FROM pg_views WHERE viewname = 'dovecot_benutzer') THEN
-        GRANT CONNECT ON DATABASE fvweb TO dovecot;
-        GRANT SELECT ON dovecot_benutzer TO dovecot;
-      END IF;
-    END \$\$;" >/dev/null
+  # Mailserver: Leserecht nur auf die Sichten für Dovecot und Exim (wie phase_mail)
+  runuser -u postgres -- psql -d fvweb -v ON_ERROR_STOP=1 -qtA >/dev/null <<'SQL'
+DO $$ DECLARE s text; BEGIN
+  IF EXISTS (SELECT FROM pg_roles WHERE rolname = 'dovecot') THEN
+    GRANT CONNECT ON DATABASE fvweb TO dovecot;
+    FOR s IN SELECT viewname FROM pg_views WHERE schemaname = 'public'
+             AND viewname IN ('dovecot_benutzer') LOOP
+      EXECUTE format('GRANT SELECT ON %I TO dovecot', s);
+    END LOOP;
+  END IF;
+  IF EXISTS (SELECT FROM pg_roles WHERE rolname = 'Debian-exim') THEN
+    GRANT CONNECT ON DATABASE fvweb TO "Debian-exim";
+    FOR s IN SELECT viewname FROM pg_views WHERE schemaname = 'public'
+             AND viewname IN ('exim_adressen', 'exim_verteiler', 'exim_absender',
+                              'exim_plus_gesperrt', 'mail_archive') LOOP
+      EXECUTE format('GRANT SELECT ON %I TO "Debian-exim"', s);
+    END LOOP;
+  END IF;
+END $$;
+SQL
   manage_in "$rel" collectstatic --noinput --clear -v0
   log "Statische Dateien: $(find "$DATA/static" -type f | wc -l)"
 
@@ -1230,6 +1289,1262 @@ phase_admin() {
   log "Den Link nur an $APP_ADMIN weitergeben. Er ist nach dem Setzen des Passworts verbraucht."
 }
 
+# --------------------------------------------------------------- Phase mail
+# Mailserver: Exim (SMTP), Dovecot (IMAP, Sieve), rspamd (Spam, Greylisting, Anhänge),
+# unbound (DNSSEC), certbot (Zertifikat für den Mail-Rechnernamen, Schlüssel bleibt für DANE).
+# Adressen, Postfächer, Verteiler und Rechte kommen aus der Datenbank der Webseite.
+MENV=/etc/fv-mail/mail.env
+
+vorlage() {  # vorlage ZIEL MODUS BESITZER:GRUPPE < Text  (ersetzt @DOMAIN@, @HOST@ …)
+  local tmp; tmp="$(mktemp)"
+  sed -e "s|@DOMAIN@|$MAIL_DOMAIN|g" -e "s|@HOST@|$MAIL_HOST|g" -e "s|@VMAIL_UID@|${VMAIL_UID:-}|g" \
+      -e "s|@QUOTA@|${QUOTA:-5}|g" -e "s|@LISTEN@|${LISTEN:-*}|g" > "$tmp"
+  install -m "$2" -o "${3%:*}" -g "${3#*:}" "$tmp" "$1"; rm -f "$tmp"
+}
+
+mail_rechte_sql() {  # Leserechte der Mailserver-Rollen auf die Sichten (wie in fv-web-update)
+  runuser -u postgres -- psql -d fvweb -v ON_ERROR_STOP=1 -qtA >/dev/null <<'SQL'
+DO $$ DECLARE s text; BEGIN
+  IF EXISTS (SELECT FROM pg_roles WHERE rolname = 'dovecot') THEN
+    GRANT CONNECT ON DATABASE fvweb TO dovecot;
+    FOR s IN SELECT viewname FROM pg_views WHERE schemaname = 'public'
+             AND viewname IN ('dovecot_benutzer') LOOP
+      EXECUTE format('GRANT SELECT ON %I TO dovecot', s);
+    END LOOP;
+  END IF;
+  IF EXISTS (SELECT FROM pg_roles WHERE rolname = 'Debian-exim') THEN
+    GRANT CONNECT ON DATABASE fvweb TO "Debian-exim";
+    FOR s IN SELECT viewname FROM pg_views WHERE schemaname = 'public'
+             AND viewname IN ('exim_adressen', 'exim_verteiler', 'exim_absender',
+                              'exim_plus_gesperrt', 'mail_archive') LOOP
+      EXECUTE format('GRANT SELECT ON %I TO "Debian-exim"', s);
+    END LOOP;
+  END IF;
+END $$;
+SQL
+}
+
+dns_a() { dig +short +time=3 +tries=2 @1.1.1.1 "$2" "$1" 2>/dev/null | grep -v '\.$' || true; }
+
+phase_mail() {
+  app_installed || { log "FEHLER: Der Mailserver braucht die installierte Anwendung (Datenbanksichten). Zuerst ohne -N ausführen."; exit 1; }
+  MAIL_DOMAIN="$DOMAIN"
+  local ip4 ip6 ptr4 ptr6 nur_ipv4=0 pw tmp policy alt
+
+  step "Mailserver: Einstellungen ($MENV)"
+  install -d -m 755 /etc/fv-mail
+  [[ -f "$MENV" ]] || ( umask 077; echo "# Mailserver – Einstellungen (nur root)" > "$MENV" )
+  chown root:root "$MENV"; chmod 600 "$MENV"
+  set_kv "$MENV" MAIL_DOMAIN "$MAIL_DOMAIN"
+  set_kv "$MENV" MAIL_HOST "$MAIL_HOST"
+  ensure_kv "$MENV" DKIM_SELECTOR "fv$(date +%Y)"
+  ensure_kv "$MENV" SRS_SECRET "$(rnd 32)"
+  ensure_kv "$MENV" RSPAMD_PASSWORT "$(rnd 18)"
+  ensure_kv "$MENV" MTA_STS_MODE "testing"
+  ensure_kv "$MENV" MTA_STS_ID ""
+  ensure_kv "$MENV" POSTMASTER ""
+  [[ -n "$POSTMASTER" ]] && set_kv "$MENV" POSTMASTER "$POSTMASTER"
+  if [[ -z "$(getkv "$MENV" POSTMASTER)" ]]; then
+    set_kv "$MENV" POSTMASTER "$(getkv "$ENVF" FV_ADMINS | cut -d, -f1 | xargs)"
+  fi
+  [[ -n "$(getkv "$MENV" POSTMASTER)" ]] \
+    || { log "FEHLER: Keine Adresse für postmaster@/abuse@ (Betreuung). Bitte mit -P <adresse> angeben."; exit 1; }
+  QUOTA="$(getkv "$ENVF" FV_MAIL_QUOTA_GB || true)"; QUOTA="${QUOTA:-5}"
+  [[ "$QUOTA" =~ ^[0-9]+$ ]] || QUOTA=5
+  set_kv "$DENV" MAIL_HOST "$MAIL_HOST"
+  log "Mail-Domain $MAIL_DOMAIN, Rechnername $MAIL_HOST, Betreuung (postmaster@): $(getkv "$MENV" POSTMASTER)"
+
+  step "Mailserver: Pakete"
+  apt_install exim4-daemon-heavy dovecot-core dovecot-imapd dovecot-lmtpd dovecot-pgsql \
+              dovecot-sieve dovecot-managesieved rspamd redis-server unbound certbot openssl
+  log "$(exim -bV | head -n1 | cut -d' ' -f1-3) | Dovecot $(dovecot --version | cut -d' ' -f1) | rspamd $(rspamd --version 2>/dev/null | grep -o '[0-9][0-9.]*' | head -n1)"
+
+  step "Mailserver: Netz, Reverse-DNS"
+  ip4="$(ip -4 route get 1.1.1.1 2>/dev/null | awk '{for (i=1;i<NF;i++) if ($i=="src") print $(i+1)}' | head -n1)"
+  ip6="$(ip -6 route get 2606:4700:4700::1111 2>/dev/null | awk '{for (i=1;i<NF;i++) if ($i=="src") print $(i+1)}' | head -n1)"
+  [[ "$ip6" == f[cd]* || "$ip6" == fe80* ]] && ip6=""
+  set_kv "$MENV" MAIL_IPV4 "$ip4"
+  ptr4="$(dig +short -x "$ip4" @1.1.1.1 2>/dev/null | sed 's/\.$//' | head -n1 || true)"
+  if [[ "$ptr4" == "$MAIL_HOST" ]]; then log "PTR $ip4 -> $ptr4: in Ordnung."
+  else log "WARNUNG: PTR von $ip4 ist '${ptr4:-leer}', erwartet $MAIL_HOST – beim Server-Anbieter eintragen (sonst landen Mails im Spam)."; fi
+  if [[ -n "$ip6" ]]; then
+    ptr6="$(dig +short -x "$ip6" @1.1.1.1 2>/dev/null | sed 's/\.$//' | head -n1 || true)"
+    if [[ "$ptr6" == "$MAIL_HOST" ]]; then
+      log "PTR $ip6 -> $ptr6: in Ordnung, Mails werden auch über IPv6 verschickt."
+    else
+      nur_ipv4=1
+      log "HINWEIS: Kein passender PTR für IPv6 $ip6 – der Mailserver verwendet nur IPv4."
+      log "         Nach dem Eintragen ($ip6 -> $MAIL_HOST) erneut mit -M ausführen."
+    fi
+  fi
+  [[ $nur_ipv4 -eq 1 ]] && ip6=""
+  set_kv "$MENV" MAIL_IPV6 "$ip6"
+  if timeout 8 bash -c 'exec 3<>/dev/tcp/gmail-smtp-in.l.google.com/25' 2>/dev/null; then
+    log "Ausgehende Verbindungen auf Port 25: möglich."
+  else
+    log "WARNUNG: Ausgehender Port 25 scheint gesperrt (Anbieter fragen) – Mails nach außen bleiben sonst in der Warteschlange."
+  fi
+
+  step "Mailserver: Benutzer, Verzeichnisse, Datenbank"
+  id vmail >/dev/null 2>&1 || { useradd --system --home-dir /var/vmail --shell /usr/sbin/nologin vmail; log "Systembenutzer vmail angelegt."; }
+  VMAIL_UID="$(id -u vmail)"
+  install -d -o vmail -g vmail -m 750 /var/vmail /var/vmail/konten /var/vmail/archiv
+  install -d -o root -g root -m 755 /var/lib/fv-mail /var/lib/fv-mail/acme /var/lib/fv-mail/www \
+             /usr/local/lib/fv-mail /usr/local/lib/fv-mail/sieve-pipe
+  install -d -o root -g Debian-exim -m 750 /etc/fv-mail/dkim /etc/fv-mail/tls
+  if [[ "$(runuser -u postgres -- psql -tAc "SELECT 1 FROM pg_roles WHERE rolname='Debian-exim'")" != 1 ]]; then
+    runuser -u postgres -- createuser --no-superuser --no-createdb --no-createrole Debian-exim
+    log "Datenbankrolle Debian-exim angelegt (Exim liest Adressen, nur über den Socket)."
+  fi
+  mail_rechte_sql
+  log "Leserechte auf die Sichten vergeben (dovecot, Debian-exim)."
+
+  step "Mailserver: DNS-Resolver (unbound, DNSSEC)"
+  cat > /etc/unbound/unbound.conf.d/fv-mail.conf <<'EOF'
+# eigener DNS-Resolver für den Mailserver (DNSSEC für DANE; DNS-Sperrlisten lehnen
+# Anfragen über öffentliche Resolver ab) – angelegt von setup-server-fv-web.sh
+server:
+    interface: 127.0.0.1
+    access-control: 127.0.0.0/8 allow
+    hide-identity: yes
+    hide-version: yes
+    qname-minimisation: yes
+    prefetch: yes
+EOF
+  unbound-checkconf >/dev/null
+  systemctl enable unbound >/dev/null; systemctl restart unbound; sleep 1
+  if dig +dnssec +time=5 @127.0.0.1 debian.org SOA 2>/dev/null | grep -q 'flags:.* ad'; then
+    if ! grep -qx 'nameserver 127.0.0.1' /etc/resolv.conf 2>/dev/null; then
+      [[ -e /etc/resolv.conf.fv-vorher ]] || cp -P /etc/resolv.conf /etc/resolv.conf.fv-vorher 2>/dev/null || true
+      rm -f /etc/resolv.conf
+      printf '# angelegt von setup-server-fv-web.sh: lokaler Resolver (unbound)\n# vorher: /etc/resolv.conf.fv-vorher\nnameserver 127.0.0.1\noptions edns0 trust-ad\n' > /etc/resolv.conf
+      if [[ -d /etc/dhcp/dhclient-enter-hooks.d ]]; then
+        printf '# fv-mail: resolv.conf nicht überschreiben (lokaler Resolver unbound)\nmake_resolv_conf() { :; }\n' \
+          > /etc/dhcp/dhclient-enter-hooks.d/fv-unbound
+      fi
+      log "/etc/resolv.conf zeigt auf unbound (127.0.0.1)."
+    fi
+    log "unbound antwortet und prüft DNSSEC."
+  else
+    log "WARNUNG: unbound liefert keine DNSSEC-geprüften Antworten – /etc/resolv.conf bleibt unverändert."
+  fi
+
+  step "Mailserver: DKIM-Schlüssel"
+  local sel; sel="$(getkv "$MENV" DKIM_SELECTOR)"
+  if [[ ! -f "/etc/fv-mail/dkim/$sel.key" ]]; then
+    ( umask 027; openssl genpkey -quiet -algorithm RSA -pkeyopt rsa_keygen_bits:2048 -out "/etc/fv-mail/dkim/$sel.key" )
+    log "DKIM-Schlüssel $sel erzeugt (öffentlicher Teil: sudo fv-mail dns)."
+  fi
+  chown root:Debian-exim "/etc/fv-mail/dkim/$sel.key"; chmod 640 "/etc/fv-mail/dkim/$sel.key"
+
+  step "Mailserver: Webseiten-Teile (Zertifikat, MTA-STS, Autoconfig)"
+  policy="$(printf 'version: STSv1\nmode: %s\nmx: %s\nmax_age: 604800\n' "$(getkv "$MENV" MTA_STS_MODE)" "$MAIL_HOST")"
+  install -d -m 755 /var/lib/fv-mail/www/mta-sts/.well-known /var/lib/fv-mail/www/autoconfig/mail
+  alt="$(cat /var/lib/fv-mail/www/mta-sts/.well-known/mta-sts.txt 2>/dev/null || true)"
+  if [[ "$alt" != "$policy" || -z "$(getkv "$MENV" MTA_STS_ID)" ]]; then
+    printf '%s\n' "$policy" > /var/lib/fv-mail/www/mta-sts/.well-known/mta-sts.txt
+    set_kv "$MENV" MTA_STS_ID "$(date +%Y%m%d%H%M%S)"
+  fi
+  vorlage /var/lib/fv-mail/www/autoconfig/mail/config-v1.1.xml 644 root:root <<'XML'
+<?xml version="1.0" encoding="UTF-8"?>
+<clientConfig version="1.1">
+  <emailProvider id="@DOMAIN@">
+    <domain>@DOMAIN@</domain>
+    <displayName>@DOMAIN@</displayName>
+    <displayShortName>@DOMAIN@</displayShortName>
+    <incomingServer type="imap">
+      <hostname>@HOST@</hostname>
+      <port>993</port>
+      <socketType>SSL</socketType>
+      <authentication>password-cleartext</authentication>
+      <username>%EMAILADDRESS%</username>
+    </incomingServer>
+    <outgoingServer type="smtp">
+      <hostname>@HOST@</hostname>
+      <port>465</port>
+      <socketType>SSL</socketType>
+      <authentication>password-cleartext</authentication>
+      <username>%EMAILADDRESS%</username>
+    </outgoingServer>
+  </emailProvider>
+</clientConfig>
+XML
+  # mta-sts.<domain> nur, wenn der Name schon auf diesen Server zeigt (sonst scheitert das Zertifikat)
+  if [[ -n "$ip4" ]] && dns_a A "mta-sts.$MAIL_DOMAIN" | grep -qx "$ip4"; then
+    set_kv "$DENV" MAIL_WEB "mta-sts.$MAIL_DOMAIN"
+  else
+    set_kv "$DENV" MAIL_WEB ""
+    log "HINWEIS: mta-sts.$MAIL_DOMAIN zeigt noch nicht auf diesen Server – MTA-STS folgt nach dem DNS-Eintrag (erneut -M)."
+  fi
+  /usr/local/sbin/fv-web-update --caddy
+
+  step "Mailserver: Zertifikat für $MAIL_HOST"
+  install -d -m 755 /etc/letsencrypt/renewal-hooks/deploy
+  cat > /etc/letsencrypt/renewal-hooks/deploy/fv-mail <<'HOOK'
+#!/bin/sh
+# Zertifikat des Mailservers nach /etc/fv-mail/tls kopieren (angelegt von setup-server-fv-web.sh)
+set -e
+[ "${RENEWED_LINEAGE##*/}" = fv-mail ] || exit 0
+install -m 644 -o root -g Debian-exim "$RENEWED_LINEAGE/fullchain.pem" /etc/fv-mail/tls/fullchain.pem
+install -m 640 -o root -g Debian-exim "$RENEWED_LINEAGE/privkey.pem" /etc/fv-mail/tls/privkey.pem
+systemctl reload dovecot 2>/dev/null || true
+HOOK
+  chmod 755 /etc/letsencrypt/renewal-hooks/deploy/fv-mail
+  local acme_mail=(--register-unsafely-without-email)
+  [[ -n "$ACME_EMAIL" ]] && acme_mail=(--email "$ACME_EMAIL")
+  if [[ -n "$ip4" ]] && dns_a A "$MAIL_HOST" | grep -qx "$ip4"; then
+    # --reuse-key: der Schlüssel bleibt bei Verlängerungen gleich (TLSA-Eintrag für DANE)
+    if certbot certonly --non-interactive --agree-tos "${acme_mail[@]}" --cert-name fv-mail \
+         --webroot -w /var/lib/fv-mail/acme -d "$MAIL_HOST" \
+         --key-type rsa --rsa-key-size 3072 --reuse-key --keep-until-expiring >/dev/null; then
+      RENEWED_LINEAGE=/etc/letsencrypt/live/fv-mail /etc/letsencrypt/renewal-hooks/deploy/fv-mail
+      log "Zertifikat: $(openssl x509 -in /etc/fv-mail/tls/fullchain.pem -noout -enddate | cut -d= -f2) (Verlängerung automatisch, certbot.timer)"
+    else
+      log "WARNUNG: Zertifikat konnte nicht geholt werden (Protokoll: /var/log/letsencrypt/letsencrypt.log)."
+    fi
+  else
+    log "HINWEIS: $MAIL_HOST zeigt noch nicht auf $ip4 – kein Zertifikat. Nach dem DNS-Eintrag erneut mit -M ausführen."
+  fi
+  if [[ ! -s /etc/fv-mail/tls/fullchain.pem ]]; then
+    openssl req -x509 -newkey rsa:3072 -nodes -days 30 -subj "/CN=$MAIL_HOST" -addext "subjectAltName=DNS:$MAIL_HOST" \
+      -keyout /etc/fv-mail/tls/privkey.pem -out /etc/fv-mail/tls/fullchain.pem 2>/dev/null
+    chown root:Debian-exim /etc/fv-mail/tls/*.pem; chmod 640 /etc/fv-mail/tls/privkey.pem; chmod 644 /etc/fv-mail/tls/fullchain.pem
+    log "Vorläufig selbst signiertes Zertifikat (Mailprogramme warnen, bis das echte Zertifikat da ist)."
+  fi
+
+  step "Mailserver: Exim (SMTP)"
+  ( umask 027
+    { echo "# Werte für /etc/exim4/exim4.conf (angelegt von setup-server-fv-web.sh, nur root/Exim)"
+      echo "FV_DOMAIN = $MAIL_DOMAIN"
+      echo "FV_HOST = $MAIL_HOST"
+      echo "FV_DKIM_SELEKTOR = $sel"
+      echo "FV_SRS_GEHEIMNIS = $(getkv "$MENV" SRS_SECRET)"
+      if [[ $nur_ipv4 -eq 1 ]]; then echo "FV_NUR_IPV4 = 1"; fi
+    } > /etc/exim4/fv-makros.conf )
+  chown root:Debian-exim /etc/exim4/fv-makros.conf; chmod 640 /etc/exim4/fv-makros.conf
+  local pm; pm="$(getkv "$MENV" POSTMASTER)"
+  printf '# Systemadressen an die Betreuung (wenn nicht als Adresse in der Webseite angelegt)\n' > /etc/fv-mail/aliases
+  for a in postmaster abuse hostmaster webmaster root mailer-daemon nobody; do printf '%s: %s\n' "$a" "$pm"; done >> /etc/fv-mail/aliases
+  chmod 644 /etc/fv-mail/aliases
+  vorlage /etc/exim4/fv-filter 644 root:root <<'FILTER'
+# Exim filter
+# Systemfilter (angelegt von setup-server-fv-web.sh): Mails, die eine angemeldete Person
+# mit einem Verteiler als Absender verschickt, landen auch im Archiv des Verteilers.
+if $authenticated_id is not "" and
+   "${lookup pgsql{SELECT 1 FROM mail_archive WHERE aktiv AND verteiler = '${quote_pgsql:${lc:${sg{$sender_address_local_part}{[+].*}{}}@$sender_address_domain}}'}{ja}{nein}}" is "ja"
+then
+  unseen deliver "fv-archiv+${sg{${lc:${sg{$sender_address_local_part}{[+].*}{}}}}{[^a-z0-9-]}{-}}@@DOMAIN@"
+endif
+FILTER
+  vorlage /etc/exim4/exim4.conf.neu 640 root:Debian-exim <<'EXIM'
+# =============================================================================
+#  Exim – Mailserver des Vereins (angelegt von setup-server-fv-web.sh)
+#  Nicht von Hand ändern: Ein erneuter Lauf mit -M überschreibt diese Datei.
+#  Werte (Domain, Rechnername, DKIM, SRS) stehen in /etc/exim4/fv-makros.conf.
+#  Adressen, Verteiler, Aliase, Sperren kommen aus der Datenbank der Webseite
+#  (Sichten exim_*; nur Leserecht, Anmeldung per Unix-Socket als Debian-exim).
+# =============================================================================
+.include /etc/exim4/fv-makros.conf
+
+primary_hostname = FV_HOST
+qualify_domain = FV_DOMAIN
+domainlist local_domains = FV_DOMAIN : FV_HOST
+hostlist relay_from_hosts = <; 127.0.0.1 ; ::1
+
+.ifdef FV_NUR_IPV4
+disable_ipv6 = true
+.endif
+
+daemon_smtp_ports = 25 : 465 : 587
+tls_on_connect_ports = 465
+tls_advertise_hosts = *
+tls_certificate = /etc/fv-mail/tls/fullchain.pem
+tls_privatekey = /etc/fv-mail/tls/privkey.pem
+# Port 25 (andere Mailserver): alles ab NORMAL; Mailprogramme (465/587): TLS 1.2 und 1.3
+tls_require_ciphers = ${if eq{$received_port}{25}{NORMAL}{NORMAL:-VERS-ALL:+VERS-TLS1.3:+VERS-TLS1.2}}
+# Anmeldung nur verschlüsselt und nur auf den Ports für Mailprogramme
+auth_advertise_hosts = ${if and{{def:tls_in_cipher}{!eq{$received_port}{25}}}{*}{}}
+
+hide pgsql_servers = (/var/run/postgresql/.s.PGSQL.5432)/fvweb/Debian-exim/
+
+acl_smtp_rcpt = acl_check_rcpt
+acl_smtp_data = acl_check_data
+
+spamd_address = 127.0.0.1 11333 variant=rspamd
+system_filter = /etc/exim4/fv-filter
+system_filter_user = Debian-exim
+
+dns_dnssec_ok = 1
+host_lookup = *
+rfc1413_hosts =
+never_users = root
+deliver_drop_privilege = true
+local_from_check = false
+keep_environment =
+add_environment = <; PATH=/usr/sbin:/usr/bin:/sbin:/bin
+
+message_size_limit = 25M
+recipients_max = 200
+smtp_accept_max = 50
+smtp_accept_max_per_host = 10
+check_spool_space = 100M
+ignore_bounce_errors_after = 2d
+timeout_frozen_after = 7d
+freeze_tell = postmaster
+smtp_banner = $smtp_active_hostname ESMTP
+log_file_path = /var/log/exim4/%slog
+# Betreff wird nicht protokolliert (Datenschutz)
+log_selector = +tls_cipher +smtp_protocol_error +smtp_syntax_error +incoming_port -host_lookup_failed
+
+# Adresse ohne Plus-Zusatz, klein geschrieben, für SQL (ACLs sehen den vollen Teil vor @)
+FV_ADR = ${quote_pgsql:${lc:${sg{$local_part}{[+].*}{}}@$domain}}
+# in Routern ist der Zusatz (+…) schon abgetrennt
+FV_RCPT = ${quote_pgsql:${lc:$local_part@$domain}}
+FV_ABSENDER = ${quote_pgsql:${lc:${sg{$sender_address_local_part}{[+].*}{}}@$sender_address_domain}}
+FV_AUTH = ${quote_pgsql:${lc:$authenticated_id}}
+
+begin acl
+
+acl_check_rcpt:
+  # lokal eingelieferte Mails (Cron, Abwesenheitsnotizen, Quota-Hinweise)
+  accept  hosts = :
+          control = dkim_disable_verify
+
+  deny    domains = +local_domains
+          local_parts = ^[.] : ^.*[@%!/|]
+          message = Ungültige Adresse
+
+  # Archivpostfach nimmt nur intern weitergeleitete Mails an
+  deny    domains = +local_domains
+          local_parts = ^fv-archiv
+          message = Unbekannte Adresse
+
+  # die Webseite (Newsletter, Benachrichtigungen) auf diesem Server
+  accept  hosts = +relay_from_hosts
+          control = submission/sender_retain
+          control = dkim_disable_verify
+
+  # angemeldete Personen: nur eigene Adressen, Aliase und eigene Verteiler als Absender
+  deny    authenticated = *
+          condition = ${lookup pgsql{SELECT 1 FROM exim_absender WHERE benutzer = 'FV_AUTH' AND adresse = 'FV_ABSENDER'}{false}{true}}
+          message = Absender <$sender_address> ist für $authenticated_id nicht erlaubt
+  deny    authenticated = *
+          ratelimit = 100 / 1h / per_rcpt / leaky / $authenticated_id
+          message = Zu viele Empfänger in kurzer Zeit (höchstens $sender_rate_limit je Stunde)
+  deny    authenticated = *
+          domains = +local_domains
+          !verify = recipient
+  accept  authenticated = *
+          control = submission/sender_retain
+          control = dkim_disable_verify
+
+  # Ports für Mailprogramme nur mit Anmeldung
+  deny    condition = ${if or{{eq{$received_port}{465}}{eq{$received_port}{587}}}}
+          message = Bitte zuerst anmelden
+
+  # von außen: nur an Adressen des Vereins
+  require message = Weiterleitung nicht erlaubt
+          domains = +local_domains
+
+  deny    dnslists = zen.spamhaus.org=127.0.0.2,127.0.0.3,127.0.0.4,127.0.0.9,127.0.0.10,127.0.0.11
+          message = Abgelehnt: $sender_host_address steht in $dnslist_domain
+
+  deny    condition = ${lookup pgsql{SELECT 1 FROM exim_plus_gesperrt WHERE adresse = '${quote_pgsql:${lc:$local_part@$domain}}'}{true}{false}}
+          message = Diese Adresse nimmt keine E-Mails mehr an
+
+  deny    condition = ${lookup pgsql{SELECT 1 FROM exim_adressen WHERE adresse = 'FV_ADR' AND art = 'gesperrt'}{true}{false}}
+          message = Diese Adresse ist nicht (mehr) vergeben
+
+  # geschlossene Verteiler: nur Mitglieder dürfen schreiben
+  deny    condition = ${lookup pgsql{SELECT 1 FROM exim_adressen WHERE adresse = 'FV_ADR' AND art = 'verteiler' AND NOT offen}{true}{false}}
+          condition = ${lookup pgsql{SELECT 1 FROM exim_verteiler WHERE verteiler = 'FV_ADR' AND empfaenger = 'FV_ABSENDER'}{false}{true}}
+          message = Dieser Verteiler nimmt nur E-Mails seiner Mitglieder an
+
+  require verify = recipient
+
+  # volles Postfach: gleich hier ablehnen statt später eine Fehlermeldung zu schicken
+  warn    set acl_m_quota = ${readsocket{/run/dovecot/quota-status}{request=smtpd_access_policy\nrecipient=${lc:$local_part@$domain}\nsize=$message_size\n\n}{5s}{}{action=DUNNO}}
+  deny    condition = ${if match{$acl_m_quota}{^action=55}}
+          message = Das Postfach ist voll
+
+  accept
+
+acl_check_data:
+  accept  hosts = : +relay_from_hosts
+
+  # angemeldet: auch die sichtbare Absenderzeile (From) muss erlaubt sein
+  deny    authenticated = *
+          condition = ${lookup pgsql{SELECT 1 FROM exim_absender WHERE benutzer = 'FV_AUTH' AND adresse = '${quote_pgsql:${lc:${sg{${local_part:${address:$h_From:}}}{[+].*}{}}@${domain:${address:$h_From:}}}}'}{false}{true}}
+          message = Absender (From) ist für $authenticated_id nicht erlaubt
+  accept  authenticated = *
+
+  deny    !verify = header_syntax
+          message = Fehlerhafte Kopfzeilen
+
+  # Kopfzeilen von außen nicht übernehmen, die wir selbst setzen
+  warn    remove_header = X-Spam : X-Spam-Score
+  # Prüfung durch rspamd (Spam, Greylisting, unzulässige Anhänge)
+  warn    spam = nobody:true/defer_ok
+          add_header = X-Spam-Score: $spam_score
+  defer   condition = ${if eq{$spam_action}{soft reject}}
+          message = Bitte später erneut versuchen (Greylisting)
+  deny    condition = ${if eq{$spam_action}{reject}}
+          message = Nachricht abgelehnt (Spamverdacht oder unzulässiger Anhang). $spam_report
+  warn    condition = ${if or{{eq{$spam_action}{add header}}{eq{$spam_action}{rewrite subject}}}}
+          set acl_m_spam = 1
+          add_header = X-Spam: Yes
+  accept
+
+begin routers
+
+# Rückläufer an weitergeleitete Mails (SRS-Adressen) zurückübersetzen
+inbound_srs:
+  driver = redirect
+  senders = :
+  domains = +local_domains
+  condition = ${if inbound_srs{$local_part}{FV_SRS_GEHEIMNIS}}
+  data = $srs_recipient
+
+inbound_srs_failure:
+  driver = redirect
+  senders = :
+  domains = +local_domains
+  condition = ${if inbound_srs{$local_part}{}}
+  allow_fail
+  data = :fail: Ungültige SRS-Adresse
+
+dnslookup:
+  driver = dnslookup
+  domains = ! +local_domains
+  transport = remote_smtp
+  ignore_target_hosts = 0.0.0.0 : 127.0.0.0/8 : ::1
+  dnssec_request_domains = *
+  no_more
+
+fv_gesperrt:
+  driver = redirect
+  domains = FV_DOMAIN
+  local_part_suffix = +*
+  local_part_suffix_optional
+  condition = ${lookup pgsql{SELECT 1 FROM exim_adressen WHERE adresse = 'FV_RCPT' AND art = 'gesperrt'}{true}{false}}
+  allow_fail
+  data = :fail: Diese Adresse ist nicht (mehr) vergeben
+
+# Kopie für das Archiv eines Verteilers (nicht bei Spam)
+fv_archiv_kopie:
+  driver = redirect
+  domains = FV_DOMAIN
+  local_part_suffix = +*
+  local_part_suffix_optional
+  unseen
+  no_verify
+  condition = ${if and{{!eq{$acl_m_spam}{1}}{eq{${lookup pgsql{SELECT 1 FROM mail_archive WHERE aktiv AND verteiler = 'FV_RCPT'}}}{1}}}}
+  data = fv-archiv+${sg{${lc:$local_part}}{[^a-z0-9-]}{-}}@FV_DOMAIN
+
+fv_verteiler:
+  driver = redirect
+  domains = FV_DOMAIN
+  local_part_suffix = +*
+  local_part_suffix_optional
+  condition = ${lookup pgsql{SELECT 1 FROM exim_adressen WHERE adresse = 'FV_RCPT' AND art = 'verteiler'}{true}{false}}
+  data = ${lookup pgsql{SELECT empfaenger FROM exim_verteiler WHERE verteiler = 'FV_RCPT'}}
+  headers_add = List-Id: <${sg{${lc:$local_part}}{[^a-z0-9-]}{-}}.FV_DOMAIN>
+  forbid_file
+  forbid_pipe
+  forbid_filter_reply
+
+fv_alias:
+  driver = redirect
+  domains = FV_DOMAIN
+  local_part_suffix = +*
+  local_part_suffix_optional
+  data = ${lookup pgsql{SELECT ziel FROM exim_adressen WHERE adresse = 'FV_RCPT' AND art = 'alias'}}
+  forbid_file
+  forbid_pipe
+
+fv_postfach:
+  driver = accept
+  domains = FV_DOMAIN
+  local_part_suffix = +*
+  local_part_suffix_optional
+  condition = ${lookup pgsql{SELECT 1 FROM exim_adressen WHERE adresse = 'FV_RCPT' AND art = 'postfach'}{true}{false}}
+  transport = dovecot_lmtp
+
+fv_archiv:
+  driver = accept
+  domains = FV_DOMAIN
+  local_parts = fv-archiv
+  local_part_suffix = +*
+  transport = dovecot_lmtp
+
+# postmaster, abuse, root … an die Betreuung (nur wenn nicht in der Datenbank)
+system_aliases:
+  driver = redirect
+  domains = +local_domains
+  data = ${lookup{${lc:$local_part}}lsearch{/etc/fv-mail/aliases}}
+  forbid_file
+  forbid_pipe
+
+begin transports
+
+remote_smtp:
+  driver = smtp
+  helo_data = FV_HOST
+  hosts_try_dane = *
+  # weitergeleitete Mails fremder Absender (Verteiler): Rückweg über SRS
+  return_path = ${if and{{!eq{$return_path}{}}{!match_domain{$sender_address_domain}{+local_domains}}}{${srs_encode{FV_SRS_GEHEIMNIS}{$return_path}{FV_DOMAIN}}}fail}
+  # DKIM-Signatur nur für Mails mit Absender aus der eigenen Domain
+  dkim_domain = FV_DOMAIN
+  dkim_selector = FV_DKIM_SELEKTOR
+  dkim_private_key = ${if eqi{${domain:${address:$h_From:}}}{FV_DOMAIN}{/etc/fv-mail/dkim/FV_DKIM_SELEKTOR.key}{0}}
+  dkim_canon = relaxed
+
+dovecot_lmtp:
+  driver = lmtp
+  socket = /run/dovecot/lmtp
+  rcpt_include_affixes
+  batch_max = 200
+
+begin retry
+
+*   *   F,2h,15m; G,16h,1h,1.5; F,4d,6h
+
+begin rewrite
+
+begin authenticators
+
+dovecot_plain:
+  driver = dovecot
+  public_name = PLAIN
+  server_socket = /run/dovecot/auth-exim
+  server_set_id = $auth1
+
+dovecot_login:
+  driver = dovecot
+  public_name = LOGIN
+  server_socket = /run/dovecot/auth-exim
+  server_set_id = $auth1
+EXIM
+  if exim -C /etc/exim4/exim4.conf.neu -bV >/dev/null 2>&1; then
+    mv /etc/exim4/exim4.conf.neu /etc/exim4/exim4.conf
+  else
+    exim -C /etc/exim4/exim4.conf.neu -bV 2>&1 | tail -5 | sed 's/^/    /'
+    rm -f /etc/exim4/exim4.conf.neu
+    log "FEHLER: Exim-Konfiguration ungültig – bisherige bleibt aktiv."; exit 1
+  fi
+  echo "$MAIL_HOST" > /etc/mailname
+  systemctl enable exim4 >/dev/null; systemctl restart exim4
+  log "Exim läuft (Ports 25, 465, 587): $(systemctl is-active exim4)"
+
+  step "Mailserver: rspamd (Spam, Greylisting, Anhänge)"
+  install -d -m 755 /etc/rspamd/local.d
+  cat > /etc/rspamd/local.d/options.inc <<'RSPAMD'
+# eigener Resolver (unbound, prüft DNSSEC) – öffentliche Resolver werden von DNS-Sperrlisten abgewiesen
+dns {
+  nameserver = ["127.0.0.1:53"];
+}
+RSPAMD
+  cat > /etc/rspamd/local.d/redis.conf <<'RSPAMD'
+servers = "127.0.0.1:6379";
+RSPAMD
+  cat > /etc/rspamd/local.d/actions.conf <<'RSPAMD'
+# Punktgrenzen: ab 4 Greylisting, ab 6 als Spam markiert (Ordner Junk), ab 15 abgelehnt
+reject = 15;
+add_header = 6;
+greylist = 4;
+RSPAMD
+  cat > /etc/rspamd/local.d/greylist.conf <<'RSPAMD'
+# erneuter Zustellversuch frühestens nach 5 Minuten; bekannte Absender 30 Tage ohne Wartezeit
+timeout = 5min;
+expire = 30d;
+RSPAMD
+  cat > /etc/rspamd/local.d/classifier-bayes.conf <<'RSPAMD'
+backend = "redis";
+autolearn = true;
+RSPAMD
+  cat > /etc/rspamd/local.d/mime_types.conf <<'RSPAMD'
+# Anhänge, die Schadsoftware enthalten können, werden nicht angenommen (siehe force_actions)
+bad_extensions = {
+  exe = 10; scr = 10; bat = 10; cmd = 10; com = 10; pif = 10; js = 10; jse = 10;
+  vbs = 10; vbe = 10; wsf = 10; ps1 = 10; jar = 10; msi = 10; lnk = 10; hta = 10;
+  cpl = 10; reg = 10; docm = 10; xlsm = 10; pptm = 10; iso = 10; img = 10; vhd = 10;
+  vhdx = 10; appx = 10;
+}
+RSPAMD
+  cat > /etc/rspamd/local.d/force_actions.conf <<'RSPAMD'
+rules {
+  FV_ANHANG {
+    action = "reject";
+    expression = "MIME_BAD_EXTENSION | MIME_DOUBLE_BAD_EXTENSION | MIME_ARCHIVE_IN_ARCHIVE";
+    message = "Anhang dieses Typs wird nicht angenommen (bitte z. B. als PDF oder über einen Link senden)";
+  }
+}
+RSPAMD
+  cat > /etc/rspamd/local.d/dkim_signing.conf <<'RSPAMD'
+# signiert Exim selbst
+enabled = false;
+RSPAMD
+  cat > /etc/rspamd/local.d/arc.conf <<'RSPAMD'
+enabled = false;
+RSPAMD
+  cat > /etc/rspamd/local.d/milter_headers.conf <<'RSPAMD'
+# Kopfzeilen setzt Exim
+use = [];
+RSPAMD
+  pw="$(rspamadm pw -q -p "$(getkv "$MENV" RSPAMD_PASSWORT)" 2>/dev/null || rspamadm pw -p "$(getkv "$MENV" RSPAMD_PASSWORT)")"
+  ( umask 027; printf '# Weboberfläche nur über SSH-Tunnel: ssh -L 11334:127.0.0.1:11334 …\npassword = "%s";\n' "$pw" \
+      > /etc/rspamd/local.d/worker-controller.inc )
+  chgrp _rspamd /etc/rspamd/local.d/worker-controller.inc 2>/dev/null || true
+  rspamadm configtest >/dev/null || { rspamadm configtest 2>&1 | tail -5 | sed 's/^/    /'; log "FEHLER: rspamd-Konfiguration ungültig."; exit 1; }
+  systemctl enable redis-server rspamd >/dev/null; systemctl restart redis-server rspamd
+  log "rspamd läuft: $(systemctl is-active rspamd) (Passwort der Weboberfläche: sudo grep RSPAMD $MENV)"
+
+  step "Mailserver: Dovecot (IMAP, Sieve, Speichergrenze, Archive)"
+  LISTEN="*"; [[ -n "$ip6" ]] && LISTEN="*, ::"
+  install -d -m 755 /etc/dovecot/sieve
+  vorlage /etc/dovecot/dovecot.conf.neu 644 root:root <<'DOVECOT'
+# =============================================================================
+#  Dovecot 2.4 – Postfächer des Vereins (angelegt von setup-server-fv-web.sh)
+#  Nicht von Hand ändern: Ein erneuter Lauf mit -M überschreibt diese Datei.
+#  Prüfen: doveconf -n
+# =============================================================================
+dovecot_config_version = 2.4.0
+dovecot_storage_version = 2.4.0
+
+protocols = imap lmtp sieve
+listen = @LISTEN@
+log_path = syslog
+auth_verbose = yes
+hostname = @HOST@
+postmaster_address = postmaster@@DOMAIN@
+
+# ------------------------------------------------------------------- TLS
+ssl = required
+ssl_server_cert_file = /etc/fv-mail/tls/fullchain.pem
+ssl_server_key_file = /etc/fv-mail/tls/privkey.pem
+ssl_min_protocol = TLSv1.2
+
+# ------------------------------------------------------------- Anmeldung
+# Benutzer und Passwörter aus der Datenbank der Webseite (Sicht dovecot_benutzer;
+# Anmeldung bei PostgreSQL per Unix-Socket als Systembenutzer dovecot, nur Leserecht)
+auth_mechanisms = plain login
+auth_allow_cleartext = no
+auth_username_format = %{user | lower}
+
+sql_driver = pgsql
+pgsql /var/run/postgresql {
+  parameters {
+    dbname = fvweb
+    user = dovecot
+  }
+}
+
+passdb sql {
+  query = SELECT benutzer AS "user", passwort AS password FROM dovecot_benutzer \
+    WHERE benutzer = '%{user}' AND aktiv AND passwort IS NOT NULL
+}
+
+# Archivpostfach der Verteiler (nur für die Zustellung, keine Anmeldung)
+userdb archiv {
+  driver = passwd-file
+  passwd_file_path = /etc/dovecot/fv-archiv.passwd
+}
+
+userdb sql {
+  query = SELECT benutzer AS "user", home FROM dovecot_benutzer WHERE benutzer = '%{user}'
+  iterate_query = SELECT benutzer AS "user" FROM dovecot_benutzer WHERE aktiv
+}
+
+# ------------------------------------------------------------- Postfächer
+mail_uid = vmail
+mail_gid = vmail
+first_valid_uid = @VMAIL_UID@
+last_valid_uid = @VMAIL_UID@
+mail_driver = maildir
+mail_path = ~/Maildir
+recipient_delimiter = +
+lmtp_save_to_detail_mailbox = no
+
+mail_plugins {
+  quota = yes
+  acl = yes
+}
+
+namespace inbox {
+  separator = /
+  inbox = yes
+  mailbox Drafts {
+    special_use = \Drafts
+    auto = subscribe
+  }
+  mailbox Sent {
+    special_use = \Sent
+    auto = subscribe
+  }
+  mailbox Archive {
+    special_use = \Archive
+    auto = subscribe
+  }
+  mailbox Junk {
+    special_use = \Junk
+    auto = subscribe
+    autoexpunge = 90d
+  }
+  mailbox Trash {
+    special_use = \Trash
+    auto = subscribe
+    autoexpunge = 90d
+  }
+}
+
+# Archive der Verteiler: für die jeweiligen Empfänger nur lesbar (Rechte in dovecot-acl,
+# schreibt fv-mail-sync); Nachrichten liegen bereits als gelesen darin
+namespace archiv {
+  type = public
+  separator = /
+  prefix = Archiv/
+  mail_driver = maildir
+  mail_path = /var/vmail/archiv/Maildir
+  subscriptions = no
+  list = children
+}
+
+acl_driver = vfile
+
+# --------------------------------------------------------- Speichergrenze
+quota "Postfach" {
+  driver = count
+  storage_size = @QUOTA@G
+  warning warn-95 {
+    quota_storage_percentage = 95
+    execute quota-warning {
+      args = 95 %{user}
+    }
+  }
+  warning warn-90 {
+    quota_storage_percentage = 90
+    execute quota-warning {
+      args = 90 %{user}
+    }
+  }
+}
+quota_status_success = DUNNO
+quota_status_nouser = DUNNO
+quota_status_overquota = "552 5.2.2 Das Postfach ist voll"
+
+# ------------------------------------------------------------------ Sieve
+sieve_max_redirects = 0
+sieve_plugins = sieve_imapsieve sieve_extprograms
+sieve_pipe_bin_dir = /usr/local/lib/fv-mail/sieve-pipe
+sieve_global_extensions {
+  vnd.dovecot.pipe = yes
+}
+
+# zuerst: als Spam markierte Mails in den Ordner Junk
+sieve_script fv-spam {
+  type = before
+  path = /etc/dovecot/sieve/fv-spam.sieve
+}
+# Abwesenheitsnotiz aus der Webseite (schreibt fv-mail-sync)
+sieve_script fv-abwesenheit {
+  type = before
+  path = ~/fv/abwesenheit.sieve
+}
+# eigene Regeln der Person (ManageSieve, Port 4190)
+sieve_script personal {
+  driver = file
+  path = ~/sieve
+  active_path = ~/.dovecot.sieve
+}
+
+# Spam lernen: in Junk verschoben = Spam, aus Junk heraus = kein Spam
+mailbox Junk {
+  sieve_script spam-lernen {
+    type = before
+    cause = copy
+    path = /etc/dovecot/sieve/spam-lernen.sieve
+  }
+}
+imapsieve_from Junk {
+  sieve_script ham-lernen {
+    type = before
+    cause = copy
+    path = /etc/dovecot/sieve/ham-lernen.sieve
+  }
+}
+
+# --------------------------------------------------------------- Dienste
+protocol imap {
+  mail_plugins {
+    imap_quota = yes
+    imap_acl = yes
+    imap_sieve = yes
+  }
+  mail_max_userip_connections = 30
+}
+
+protocol lmtp {
+  mail_plugins {
+    sieve = yes
+  }
+}
+
+service imap-login {
+  inet_listener imap {
+    port = 0
+  }
+  inet_listener imaps {
+    port = 993
+    ssl = yes
+  }
+}
+
+service managesieve-login {
+  inet_listener sieve {
+    port = 4190
+  }
+}
+
+service lmtp {
+  unix_listener lmtp {
+    mode = 0600
+    user = Debian-exim
+  }
+}
+
+service auth {
+  unix_listener auth-exim {
+    mode = 0600
+    user = Debian-exim
+  }
+}
+
+service auth-worker {
+  user = dovecot
+}
+
+service quota-status {
+  executable = quota-status -p postfix
+  unix_listener quota-status {
+    mode = 0600
+    user = Debian-exim
+  }
+  client_limit = 1
+}
+
+service quota-warning {
+  executable = script /usr/local/lib/fv-mail/quota-warnung
+  user = dovecot
+  unix_listener quota-warning {
+    mode = 0600
+    user = vmail
+  }
+}
+DOVECOT
+  if doveconf -c /etc/dovecot/dovecot.conf.neu -n >/dev/null 2>&1; then
+    [[ -e /etc/dovecot/dovecot.conf.debian ]] || cp /etc/dovecot/dovecot.conf /etc/dovecot/dovecot.conf.debian
+    mv /etc/dovecot/dovecot.conf.neu /etc/dovecot/dovecot.conf
+  else
+    doveconf -c /etc/dovecot/dovecot.conf.neu -n 2>&1 | grep -i -m5 'error\|fatal' | sed 's/^/    /' || true
+    log "FEHLER: Dovecot-Konfiguration ungültig – bisherige bleibt aktiv (neue: /etc/dovecot/dovecot.conf.neu)."; exit 1
+  fi
+  printf 'fv-archiv@%s::%s:%s::/var/vmail/archiv::\n' "$MAIL_DOMAIN" "$VMAIL_UID" "$(id -g vmail)" > /etc/dovecot/fv-archiv.passwd
+  chmod 644 /etc/dovecot/fv-archiv.passwd
+  cat > /etc/dovecot/sieve/fv-spam.sieve <<'SIEVE'
+# Als Spam markierte Mails (rspamd, Kopfzeile X-Spam) in den Ordner Junk
+require ["fileinto", "mailbox"];
+if header :is "X-Spam" "Yes" {
+  fileinto :create "Junk";
+  stop;
+}
+SIEVE
+  cat > /etc/dovecot/sieve/spam-lernen.sieve <<'SIEVE'
+# in Junk verschoben: rspamd lernt „Spam“
+require ["vnd.dovecot.pipe", "copy", "imapsieve"];
+pipe :copy "rspamd-lernen" ["spam"];
+SIEVE
+  cat > /etc/dovecot/sieve/ham-lernen.sieve <<'SIEVE'
+# aus Junk heraus verschoben (nicht in den Papierkorb): rspamd lernt „kein Spam“
+require ["vnd.dovecot.pipe", "copy", "imapsieve", "environment", "variables"];
+if environment :matches "imap.mailbox" "*" { set "ziel" "${1}"; }
+if string :is "${ziel}" "Trash" { stop; }
+pipe :copy "rspamd-lernen" ["ham"];
+SIEVE
+  cat > /usr/local/lib/fv-mail/sieve-pipe/rspamd-lernen <<'PIPE'
+#!/bin/sh
+# von Dovecot (IMAPSieve) aufgerufen: $1 = spam | ham, Nachricht auf stdin
+case "$1" in spam|ham) exec /usr/bin/rspamc -h 127.0.0.1:11334 "learn_$1" >/dev/null ;; esac
+PIPE
+  vorlage /usr/local/lib/fv-mail/quota-warnung 755 root:root <<'QUOTA'
+#!/bin/sh
+# Hinweis an die Person, wenn ihr Postfach fast voll ist (von Dovecot aufgerufen: <prozent> <adresse>)
+PROZENT="$1"; BENUTZER="$2"
+case "$BENUTZER" in *[!a-z0-9@._+-]*|"") exit 0 ;; esac
+/usr/sbin/sendmail -f '<>' -- "$BENUTZER" <<EOF
+From: Postmaster <postmaster@@DOMAIN@>
+To: <$BENUTZER>
+Subject: Ihr Postfach ist zu $PROZENT % gefüllt
+MIME-Version: 1.0
+Content-Type: text/plain; charset=utf-8
+Content-Transfer-Encoding: 8bit
+Auto-Submitted: auto-generated
+
+Hallo,
+
+Ihr Postfach $BENUTZER ist zu $PROZENT % gefüllt. Ist es voll, werden neue
+E-Mails abgewiesen.
+
+Bitte löschen Sie nicht mehr benötigte E-Mails (vor allem mit großen Anhängen)
+und leeren Sie den Papierkorb. Die aktuelle Belegung steht auf der Webseite unter
+„Konto“.
+
+Diese Nachricht wurde automatisch erzeugt.
+EOF
+QUOTA
+  chmod 755 /usr/local/lib/fv-mail/sieve-pipe/rspamd-lernen
+  sievec /etc/dovecot/sieve/fv-spam.sieve
+  sievec /etc/dovecot/sieve/spam-lernen.sieve
+  sievec /etc/dovecot/sieve/ham-lernen.sieve
+  # Archivpostfach: legt jede Kopie als gelesen im Ordner des Verteilers ab
+  install -d -o vmail -g vmail -m 750 /var/vmail/archiv/sieve
+  cat > /var/vmail/archiv/sieve/archiv.sieve <<'SIEVE'
+# Kopie für das Archiv eines Verteilers: Ordner = Zusatz der Adresse (fv-archiv+<ordner>@…)
+require ["fileinto", "mailbox", "envelope", "subaddress", "variables", "imap4flags"];
+set "ordner" "unbekannt";
+if envelope :detail :matches "to" "?*" { set "ordner" "${1}${2}"; }
+fileinto :create :flags "\\Seen" "${ordner}";
+SIEVE
+  chown vmail:vmail /var/vmail/archiv/sieve/archiv.sieve
+  ln -sfn sieve/archiv.sieve /var/vmail/archiv/.dovecot.sieve; chown -h vmail:vmail /var/vmail/archiv/.dovecot.sieve
+  systemctl enable dovecot >/dev/null; systemctl restart dovecot
+  log "Dovecot läuft (IMAPS 993, ManageSieve 4190): $(systemctl is-active dovecot)"
+  if doveadm user "fv-archiv@$MAIL_DOMAIN" >/dev/null 2>&1 && doveadm user -m '*' >/dev/null 2>&1; then
+    log "Datenbankzugriff von Dovecot: in Ordnung ($(doveadm user '*' 2>/dev/null | grep -c . || true) Postfächer)."
+  else
+    log "WARNUNG: Dovecot findet die Postfächer nicht – Protokoll: journalctl -u dovecot"
+  fi
+
+  step "Mailserver: Firewall, fail2ban, Protokolle"
+  ufw allow 25/tcp comment 'SMTP (Mailserver)' >/dev/null
+  ufw allow 465/tcp comment 'SMTPS (Mailprogramme)' >/dev/null
+  ufw allow 587/tcp comment 'Submission (Mailprogramme)' >/dev/null
+  ufw allow 993/tcp comment 'IMAPS' >/dev/null
+  ufw allow 4190/tcp comment 'ManageSieve' >/dev/null
+  cat > /etc/fail2ban/jail.d/fv-mail.local <<'EOF'
+# angelegt von setup-server-fv-web.sh: falsche Passwörter beim Mailserver
+[exim]
+enabled  = true
+port     = smtp,465,submission
+backend  = auto
+logpath  = /var/log/exim4/mainlog
+maxretry = 10
+findtime = 10m
+bantime  = 10m
+bantime.increment = true
+
+[dovecot]
+enabled  = true
+port     = imaps,4190
+backend  = systemd
+maxretry = 10
+findtime = 10m
+bantime  = 10m
+bantime.increment = true
+EOF
+  systemctl restart fail2ban
+  # Protokolle 14 Tage
+  sed -i 's/^\(\s*rotate\s\+\)[0-9]\+/\114/' /etc/logrotate.d/exim4-base /etc/logrotate.d/exim4-paniclog 2>/dev/null || true
+  install -d -m 755 /etc/systemd/journald.conf.d
+  printf '[Journal]\nMaxRetentionSec=14day\n' > /etc/systemd/journald.conf.d/fv-mail.conf
+  systemctl restart systemd-journald
+  log "Ports 25, 465, 587, 993, 4190 offen; fail2ban für Exim und Dovecot; Protokolle 14 Tage."
+
+  step "Mailserver: Abgleich mit der Webseite (fv-mail)"
+  cat > /usr/local/sbin/fv-mail <<'FVMAIL'
+#!/usr/bin/env bash
+# =============================================================================
+#  fv-mail – Mailserver mit der Webseite abgleichen (angelegt von setup-server-fv-web.sh)
+#
+#  sudo fv-mail sync         Abwesenheitsnotizen, Archiv-Rechte, Belegung, Plus-Adressen
+#                            (alle 5 Minuten über fv-mail-sync.timer)
+#  sudo fv-mail taeglich     Erinnerungen und Löschungen gesperrter Postfächer,
+#                            Aufbewahrungsfrist der Archive (täglich, fv-mail-taeglich.timer)
+#  sudo fv-mail import <maildir> <adresse>
+#                            vorhandene Mails (Maildir) in ein Postfach übernehmen
+#  sudo fv-mail status       Dienste, Warteschlange, Zertifikat, Postfächer
+#  sudo fv-mail dns          DNS-Einträge anzeigen und prüfen
+# =============================================================================
+set -Eeuo pipefail
+umask 077
+[[ $EUID -eq 0 ]] || { echo "Bitte mit sudo ausführen." >&2; exit 1; }
+MENV=/etc/fv-mail/mail.env
+[[ -f "$MENV" ]] || { echo "$MENV fehlt – Mailserver mit setup-server-fv-web.sh … -M einrichten." >&2; exit 1; }
+getkv() { grep -m1 "^$1=" "$MENV" | cut -d= -f2- | sed 's/^"//; s/"$//'; }
+DOMAIN="$(getkv MAIL_DOMAIN)"; HOST="$(getkv MAIL_HOST)"; SELEKTOR="$(getkv DKIM_SELECTOR)"
+ARCHIV=/var/vmail/archiv/Maildir
+ARCHIV_BENUTZER="fv-archiv@$DOMAIN"
+STAND=/var/lib/fv-mail
+log() { printf '%s [fv-mail] %s\n' "$(date '+%F %T')" "$*"; }
+sql() { runuser -u postgres -- psql -d fvweb -XAtq -F $'\t' -c "$1"; }
+manage() { /usr/local/sbin/fv-manage "$@"; }
+# Ordnername im Archiv: Teil vor @, klein, nur a-z 0-9 - (wie im Exim-Router fv_archiv_kopie)
+ordner() { local lp="${1%@*}"; lp="${lp,,}"; printf '%s' "$lp" | tr -c 'a-z0-9-' '-'; }
+
+abwesenheit() {
+  local quelle="$STAND/sieve" f nr ziel
+  install -d -o fvweb -g fvweb -m 700 "$quelle"
+  manage mail_sieve --ziel "$quelle" >/dev/null
+  for f in "$quelle"/*.sieve; do
+    [[ -e "$f" ]] || continue
+    nr="$(basename "$f" .sieve)"; [[ "$nr" =~ ^[0-9]+$ ]] || continue
+    ziel="/var/vmail/konten/$nr/fv/abwesenheit.sieve"
+    cmp -s "$f" "$ziel" 2>/dev/null && continue
+    install -d -o vmail -g vmail -m 700 "/var/vmail/konten/$nr" "/var/vmail/konten/$nr/fv"
+    install -o vmail -g vmail -m 600 "$f" "$ziel"
+    rm -f "${ziel%.sieve}.svbin"
+  done
+  for ziel in /var/vmail/konten/*/fv/abwesenheit.sieve; do
+    [[ -e "$ziel" ]] || continue
+    nr="$(basename "$(dirname "$(dirname "$ziel")")")"
+    [[ -e "$quelle/$nr.sieve" ]] || rm -f "$ziel" "${ziel%.sieve}.svbin"
+  done
+}
+
+archiv_rechte() {
+  local verteiler leser name datei neu
+  install -d -o vmail -g vmail -m 750 /var/vmail/archiv "$ARCHIV"
+  # Wurzel: nur das Archivpostfach selbst
+  neu="user=$ARCHIV_BENUTZER lrwstipekxa"
+  [[ "$(cat "$ARCHIV/dovecot-acl" 2>/dev/null)" == "$neu" ]] \
+    || { printf '%s\n' "$neu" > "$ARCHIV/dovecot-acl"; chown vmail:vmail "$ARCHIV/dovecot-acl"; }
+  declare -A rechte=()
+  while IFS=$'\t' read -r verteiler _; do
+    [[ -n "$verteiler" ]] && rechte["$(ordner "$verteiler")"]=""
+  done < <(sql "SELECT verteiler, aktiv FROM mail_archive")
+  while IFS=$'\t' read -r verteiler leser; do
+    [[ -n "$verteiler" && "$leser" =~ ^[a-z0-9._+-]+@[a-z0-9.-]+$ ]] || continue
+    name="$(ordner "$verteiler")"
+    rechte["$name"]+="user=$leser lr"$'\n'
+  done < <(sql "SELECT verteiler, benutzer FROM dovecot_archiv_leser ORDER BY 1, 2")
+  # auch Ordner abgeschalteter Archive: nur noch für das Archivpostfach
+  for datei in "$ARCHIV"/.*/; do
+    name="$(basename "$datei")"; name="${name#.}"
+    [[ "$name" == "" || "$name" == "." || "$name" == ".." ]] && continue
+    [[ -v "rechte[$name]" ]] || rechte["$name"]=""
+  done
+  for name in "${!rechte[@]}"; do
+    [[ -d "$ARCHIV/.$name" ]] || doveadm mailbox create -u "$ARCHIV_BENUTZER" "$name" 2>/dev/null || true
+    [[ -d "$ARCHIV/.$name" ]] || continue
+    neu="user=$ARCHIV_BENUTZER lrwstipekxa"$'\n'"${rechte[$name]}"
+    if [[ "$(cat "$ARCHIV/.$name/dovecot-acl" 2>/dev/null)"$'\n' != "$neu" ]]; then
+      printf '%s' "$neu" > "$ARCHIV/.$name/dovecot-acl"
+      chown vmail:vmail "$ARCHIV/.$name/dovecot-acl"; chmod 600 "$ARCHIV/.$name/dovecot-acl"
+      log "Archiv $name: $(grep -c ' lr$' "$ARCHIV/.$name/dovecot-acl" || true) Leser"
+    fi
+  done
+}
+
+belegung() {
+  doveadm -f flow quota get -A 2>/dev/null | manage mail_belegung >/dev/null
+}
+
+# zugestellte Plus-Adressen aus dem Exim-Protokoll (nur neue Zeilen seit dem letzten Lauf)
+plusadressen() {
+  local log=/var/log/exim4/mainlog pos="$STAND/mainlog.pos" ino alt_ino=0 alt_off=0 groesse
+  [[ -f "$log" ]] || return 0
+  [[ -f "$pos" ]] && read -r alt_ino alt_off < "$pos"
+  ino="$(stat -c %i "$log")"; groesse="$(stat -c %s "$log")"
+  {
+    if [[ "$ino" != "$alt_ino" ]]; then
+      # rotiert: Rest der alten Datei, dann die neue von vorn
+      [[ -f "$log.1" && "$(stat -c %i "$log.1")" == "$alt_ino" ]] && tail -c +"$((alt_off + 1))" "$log.1"
+      head -c "$groesse" "$log"
+    elif (( groesse > alt_off )); then
+      tail -c +"$((alt_off + 1))" "$log" | head -c "$((groesse - alt_off))"
+    fi
+  } | awk -v d="@$DOMAIN" '
+      $4 == "=>" || $4 == "->" {
+        a = $5; if ($6 ~ /^</) { a = $6; gsub(/[<>]/, "", a) }
+        a = tolower(a)
+        if (a ~ /^[^@]+\+[^@]*@/ && a !~ /^fv-archiv\+/ && substr(a, length(a) - length(d) + 1) == d) print a
+      }' | manage mail_plusadressen >/dev/null
+  printf '%s %s\n' "$ino" "$groesse" > "$pos"
+}
+
+abgleich() {
+  exec 9>/run/fv-mail-sync.lock; flock -n 9 || exit 0
+  [[ -e /srv/fv-web/current/manage.py ]] || { log "Anwendung nicht installiert."; exit 0; }
+  abwesenheit; archiv_rechte; belegung; plusadressen
+}
+
+taeglich() {
+  exec 9>/run/fv-mail-sync.lock; flock 9
+  local nr faellig=() verteiler frist
+  manage mail_aufraeumen | sed 's/^/  /'
+  while read -r nr; do
+    [[ "$nr" =~ ^[0-9]+$ ]] || continue
+    doveadm kick "$(sql "SELECT benutzer FROM dovecot_benutzer WHERE nummer = $nr")" >/dev/null 2>&1 || true
+    rm -rf --one-file-system "/var/vmail/konten/$nr"
+    faellig+=("$nr"); log "Postfach $nr gelöscht (Löschfrist abgelaufen)."
+  done < <(manage mail_aufraeumen --faellig)
+  (( ${#faellig[@]} == 0 )) || manage mail_aufraeumen --geloescht "${faellig[@]}" | sed 's/^/  /'
+  # Archive mit Aufbewahrungsfrist
+  while IFS=$'\t' read -r verteiler frist; do
+    [[ "$frist" =~ ^[1-9][0-9]*$ ]] || continue
+    doveadm expunge -u "$ARCHIV_BENUTZER" mailbox "$(ordner "$verteiler")" savedbefore "${frist}d" 2>/dev/null || true
+  done < <(sql "SELECT verteiler, coalesce(frist_tage, 0) FROM mail_archive")
+}
+
+uebernehmen() {
+  local quelle="${1:?Maildir-Verzeichnis fehlt}" adresse="${2:?Adresse fehlt}" nr ziel
+  adresse="${adresse,,}"
+  [[ "$adresse" =~ ^[a-z0-9._+-]+@[a-z0-9.-]+$ ]] || { echo "Ungültige Adresse: $adresse" >&2; exit 2; }
+  [[ -d "$quelle/cur" || -d "$quelle/new" ]] || { echo "$quelle ist kein Maildir (cur/, new/ fehlen)." >&2; exit 2; }
+  nr="$(sql "SELECT nummer FROM dovecot_benutzer WHERE benutzer = '$adresse'")"
+  [[ "$nr" =~ ^[0-9]+$ ]] || { echo "Kein Postfach mit der Adresse $adresse." >&2; exit 1; }
+  ziel="/var/vmail/konten/$nr/Maildir"
+  install -d -o vmail -g vmail -m 700 "/var/vmail/konten/$nr" "$ziel"
+  log "Übernehme $quelle nach $adresse ($ziel) – vorhandene Mails bleiben erhalten."
+  rsync -a --ignore-existing --exclude 'dovecot*' --exclude 'subscriptions' --exclude 'courier*' "$quelle/" "$ziel/"
+  chown -R vmail:vmail "/var/vmail/konten/$nr"
+  doveadm force-resync -u "$adresse" '*'
+  doveadm quota recalc -u "$adresse" || true
+  doveadm mailbox list -u "$adresse" | sed 's/^/  /'
+  doveadm -f flow quota get -u "$adresse" | sed 's/^/  /'
+}
+
+status() {
+  local d
+  for d in exim4 dovecot rspamd redis-server unbound; do printf '%-13s %s\n' "$d" "$(systemctl is-active "$d" || true)"; done
+  echo "Warteschlange: $(exim -bpc) Nachricht(en)"
+  openssl x509 -in /etc/fv-mail/tls/fullchain.pem -noout -subject -issuer -enddate | sed 's/^/Zertifikat:   /'
+  echo "Postfächer:   $(sql "SELECT count(*) FROM dovecot_benutzer WHERE aktiv") aktiv, $(sql "SELECT count(*) FROM dovecot_benutzer WHERE NOT aktiv") gesperrt"
+  echo "Belegung:     $(du -sh /var/vmail 2>/dev/null | cut -f1) in /var/vmail"
+}
+
+dns() {
+  local ip4 ip6 dkim tlsa
+  ip4="$(getkv MAIL_IPV4)"; ip6="$(getkv MAIL_IPV6)"
+  dkim="$(openssl pkey -in "/etc/fv-mail/dkim/$SELEKTOR.key" -pubout -outform DER 2>/dev/null | base64 -w0)"
+  tlsa="$(openssl x509 -in /etc/fv-mail/tls/fullchain.pem -noout -pubkey | openssl pkey -pubin -outform DER | sha256sum | cut -d' ' -f1)"
+  cat <<EOF
+Beim DNS-Anbieter einzutragen (Zone $DOMAIN, TTL z. B. 3600):
+
+$HOST.                      A      $ip4
+$( [[ -n "$ip6" ]] && echo "$HOST.                      AAAA   $ip6" )
+$DOMAIN.                    MX     10 $HOST.
+$DOMAIN.                    TXT    "v=spf1 mx -all"
+$HOST.                      TXT    "v=spf1 a -all"
+$SELEKTOR._domainkey.$DOMAIN.  TXT  $(printf '%s' "v=DKIM1; k=rsa; p=$dkim" | fold -w 250 | sed 's/.*/"&"/' | paste -sd ' ')
+_dmarc.$DOMAIN.             TXT    "v=DMARC1; p=none; rua=mailto:postmaster@$DOMAIN"
+_mta-sts.$DOMAIN.           TXT    "v=STSv1; id=$(getkv MTA_STS_ID)"
+mta-sts.$DOMAIN.            A      $ip4      (Richtlinie liefert Caddy aus)
+_smtp._tls.$DOMAIN.         TXT    "v=TLSRPTv1; rua=mailto:postmaster@$DOMAIN"
+_submissions._tcp.$DOMAIN.  SRV    0 1 465 $HOST.
+_imaps._tcp.$DOMAIN.        SRV    0 1 993 $HOST.
+_submission._tcp.$DOMAIN.   SRV    0 0 0 .
+_imap._tcp.$DOMAIN.         SRV    0 0 0 .
+_pop3._tcp.$DOMAIN.         SRV    0 0 0 .
+_pop3s._tcp.$DOMAIN.        SRV    0 0 0 .
+
+Nur mit DNSSEC (sonst wirkungslos):
+_25._tcp.$HOST.             TLSA   3 1 1 $tlsa
+
+Beim Server-Anbieter (Reverse-DNS, PTR):
+$ip4  ->  $HOST
+$( [[ -n "$ip6" ]] && echo "$ip6  ->  $HOST" )
+EOF
+  echo
+  echo "Prüfung (Resolver 1.1.1.1):"
+  pruefe() { local soll="$3" ist; ist="$(dig +short +time=3 +tries=2 @1.1.1.1 "$2" "$1" 2>/dev/null | tr '\n' ' ' | sed 's/ $//')"
+    if [[ "$ist" == *"$soll"* && -n "$ist" ]]; then echo "  OK      $1 $2"; else echo "  FEHLT   $1 $2 (gefunden: ${ist:-nichts})"; fi; }
+  pruefe "$HOST" A "$ip4"
+  pruefe "$DOMAIN" MX "$HOST"
+  pruefe "$DOMAIN" TXT "v=spf1"
+  pruefe "$SELEKTOR._domainkey.$DOMAIN" TXT "${dkim:0:40}"
+  pruefe "_dmarc.$DOMAIN" TXT "v=DMARC1"
+  pruefe "_mta-sts.$DOMAIN" TXT "v=STSv1"
+  pruefe "_smtp._tls.$DOMAIN" TXT "v=TLSRPTv1"
+  pruefe "$(awk -F. '{print $4"."$3"."$2"."$1".in-addr.arpa"}' <<<"$ip4")" PTR "$HOST"
+}
+
+case "${1:-}" in
+  sync) abgleich ;;
+  taeglich) taeglich ;;
+  import) shift; uebernehmen "$@" ;;
+  status) status ;;
+  dns) dns ;;
+  *) sed -n '3,13p' "$0" | sed 's/^# \{0,1\}//'; exit 2 ;;
+esac
+FVMAIL
+  chmod 750 /usr/local/sbin/fv-mail
+  cat > /etc/systemd/system/fv-mail-sync.service <<'EOF'
+[Unit]
+Description=Mailserver: Abgleich mit der Webseite (Abwesenheit, Archive, Belegung, Plus-Adressen)
+After=postgresql.service dovecot.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/fv-mail sync
+Nice=10
+EOF
+  cat > /etc/systemd/system/fv-mail-sync.timer <<'EOF'
+[Unit]
+Description=Mailserver: Abgleich alle 5 Minuten
+
+[Timer]
+OnBootSec=2min
+OnUnitActiveSec=5min
+
+[Install]
+WantedBy=timers.target
+EOF
+  cat > /etc/systemd/system/fv-mail-taeglich.service <<'EOF'
+[Unit]
+Description=Mailserver: Löschfristen der Postfächer und Archive
+After=postgresql.service dovecot.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/fv-mail taeglich
+Nice=10
+EOF
+  cat > /etc/systemd/system/fv-mail-taeglich.timer <<'EOF'
+[Unit]
+Description=Mailserver: tägliche Aufgaben
+
+[Timer]
+OnCalendar=*-*-* 04:15
+RandomizedDelaySec=10min
+Persistent=true
+
+[Install]
+WantedBy=timers.target
+EOF
+  systemctl daemon-reload
+  systemctl enable --now fv-mail-sync.timer fv-mail-taeglich.timer >/dev/null
+  if /usr/local/sbin/fv-mail sync; then log "Erster Abgleich erfolgreich."
+  else log "WARNUNG: Erster Abgleich fehlgeschlagen (sudo fv-mail sync)."; fi
+
+  step "Mailserver: Webseite verschickt über den eigenen Mailserver"
+  set_kv "$ENVF" FV_MAIL "smtp"
+  set_kv "$ENVF" FV_SMTP_HOST "127.0.0.1"
+  set_kv "$ENVF" FV_SMTP_PORT "25"
+  set_kv "$ENVF" FV_SMTP_USER ""
+  set_kv "$ENVF" FV_SMTP_PASSWORD ""
+  set_kv "$ENVF" FV_SMTP_TLS "aus"
+  set_kv "$ENVF" FV_MAIL_DOMAIN "$MAIL_DOMAIN"
+  set_kv "$ENVF" FV_MAIL_SERVER "$MAIL_HOST"
+  systemctl restart fv-web
+  log "FV_MAIL=smtp über 127.0.0.1:25; Vereinsadressen @$MAIL_DOMAIN, Server $MAIL_HOST."
+
+  grep -q /var/vmail /usr/local/sbin/fv-web-backup \
+    || log "HINWEIS: Die Datensicherung kennt die Postfächer noch nicht – einmal ohne -U ausführen."
+
+  step "Mailserver: DNS-Einträge"
+  /usr/local/sbin/fv-mail dns || true
+}
+
 # ------------------------------------------------------------ Phase summary
 phase_summary() {
   step "Zusammenfassung"
@@ -1245,8 +2560,13 @@ phase_summary() {
   fi
   log "Updates:      sudo fv-web-update            (holt $(getkv "$DENV" DEFAULT_REF) aus $(getkv "$DENV" REPO_URL))"
   log "              sudo fv-web-update --zurueck  (vorige Version)"
-  log "E-Mail:       FV_MAIL=$(getkv "$ENVF" FV_MAIL) – Mailserver später in $ENVF eintragen (FV_MAIL=smtp, FV_SMTP_*),"
-  log "              danach: sudo systemctl restart fv-web"
+  if [[ -f /etc/fv-mail/mail.env ]]; then
+    log "Mailserver:   exim4 $(systemctl is-active exim4 || true) | dovecot $(systemctl is-active dovecot || true) | rspamd $(systemctl is-active rspamd || true) | unbound $(systemctl is-active unbound || true)"
+    log "              $(getkv /etc/fv-mail/mail.env MAIL_HOST), Warteschlange $(exim -bpc 2>/dev/null || echo ?) | sudo fv-mail status | sudo fv-mail dns"
+  else
+    log "E-Mail:       FV_MAIL=$(getkv "$ENVF" FV_MAIL) – eigener Mailserver mit -M, oder in $ENVF eintragen"
+    log "              (FV_MAIL=smtp, FV_SMTP_*), danach: sudo systemctl restart fv-web"
+  fi
   log "Backup:       täglich ~03:30 nach $(getkv "$BENV" RESTIC_REPOSITORY)"
   log "              Wiederherstellungstest: sudo fv-web-restore -t"
   if [[ "$(getkv "$BENV" RESTIC_REPOSITORY)" == /* ]]; then
@@ -1269,6 +2589,7 @@ case "$PHASE" in
   tool)    phase_tool ;;
   app)     phase_app ;;
   admin)   phase_admin ;;
+  mail)    phase_mail ;;
   summary) phase_summary ;;
   *) echo "Unbekannte Phase: $PHASE"; exit 2 ;;
 esac
@@ -1327,7 +2648,12 @@ if [[ -n "$APP_ADMIN" ]]; then
   run_remote admin <<<"$REMOTE_SCRIPT"
 fi
 
-log "Phase 7: Zusammenfassung"
+if [[ $WITH_MAIL -eq 1 ]]; then
+  log "Phase 7: Mailserver ($MAIL_HOST)"
+  run_remote mail <<<"$REMOTE_SCRIPT"
+fi
+
+log "Phase 8: Zusammenfassung"
 run_remote summary <<<"$REMOTE_SCRIPT"
 
 if curl -fsS --max-time 15 -o /dev/null "https://$DOMAIN/"; then

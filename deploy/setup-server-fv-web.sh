@@ -91,7 +91,7 @@ ACME_EMAIL=""
 BACKUP_REPO=""
 GIT_REF=""                                  # leer: Server nimmt main; mit -L: HEAD
 REPO_URL=""                                 # leer: bisheriger Eintrag bzw. Standard
-REPO_URL_DEFAULT="https://github.com/brami/FKJF.git"
+REPO_URL_DEFAULT="https://github.com/brami/FreiVerein.git"
 LOCAL_UPLOAD=0
 SKIP_HARDEN=0
 ASSUME_YES=0
@@ -123,7 +123,7 @@ Anwendung:
                   (mit -L: HEAD des lokalen Repositorys)
   -R <url>        Repository, aus dem der Server holt. Standard beim ersten
                   Lauf: $REPO_URL_DEFAULT
-                  Privates Repository per SSH: git@github.com:brami/FKJF.git
+                  Privates Repository per SSH: git@github.com:brami/FreiVerein.git
                   (der Server zeigt dann seinen Deploy-Schlüssel an)
   -L              Lokalen Stand hochladen statt vom Server holen lassen
                   (nur im ausgecheckten Repository; nur eingecheckter Code)
@@ -981,6 +981,13 @@ phase_tool() {
   chown root:root "$DENV"; chmod 600 "$DENV"
   if [[ -n "$REPO_URL" ]]; then set_kv "$DENV" REPO_URL "$REPO_URL"
   else ensure_kv "$DENV" REPO_URL "$REPO_URL_DEFAULT"; fi
+  # Repository umbenannt (FKJF → FreiVerein): alte Adresse auf vorhandenen Servern ersetzen
+  case "$(getkv "$DENV" REPO_URL)" in
+    https://github.com/brami/FKJF.git|https://github.com/brami/FKJF)
+      set_kv "$DENV" REPO_URL "https://github.com/brami/FreiVerein.git"; log "Repository-Adresse auf brami/FreiVerein umgestellt." ;;
+    git@github.com:brami/FKJF.git)
+      set_kv "$DENV" REPO_URL "git@github.com:brami/FreiVerein.git"; log "Repository-Adresse auf brami/FreiVerein umgestellt." ;;
+  esac
   ensure_kv "$DENV" DEFAULT_REF "main"
   set_kv "$DENV" DOMAIN "$DOMAIN"
   set_kv "$DENV" WITH_WWW "$WITH_WWW"

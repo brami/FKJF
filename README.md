@@ -187,7 +187,7 @@ deploy/setup-server-fv-web.sh -H <server> -d foerderverein-kf-jf-kreuzau.de -U -
 Voraussetzung für die Erstinstallation: Anmeldung als `root` per SSH-Schlüssel. Danach
 legt das Skript den Admin-Benutzer `fkjs` an und sperrt den root-Login. Alle Optionen: `-h`.
 
-Privates Repository: mit `-R git@github.com:brami/FKJF.git` aufrufen. Der Server zeigt
+Privates Repository: mit `-R git@github.com:brami/FreiVerein.git` aufrufen. Der Server zeigt
 dann seinen Deploy-Schlüssel an; diesen bei GitHub unter *Settings → Deploy keys* ohne
 Schreibrecht eintragen und den Aufruf wiederholen.
 
